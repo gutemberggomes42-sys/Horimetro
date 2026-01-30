@@ -1305,6 +1305,95 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             const [selectedIds, setSelectedIds] = useState(new Set());
             const [connectionStatus, setConnectionStatus] = useState('idle');
 
+            // Chart Refs
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            // Chart Effect
+            useEffect(() => {
+                if (activeView === 'dashboard' && chartRef.current && history.length > 0) {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    const ctx = chartRef.current.getContext('2d');
+                    
+                    // Aggregate data: Last 7 days
+                    const days = 7;
+                    const labels = [];
+                    const dataPoints = [];
+                    const now = new Date();
+                    
+                    for (let i = days - 1; i >= 0; i--) {
+                        const d = new Date();
+                        d.setDate(now.getDate() - i);
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const year = d.getFullYear();
+                        const dateStr = `${day}/${month}/${year}`;
+                        
+                        labels.push(`${day}/${month}`);
+                        
+                        // Sum hours for this date
+                        const reports = history.filter(h => h.date === dateStr);
+                        const totalHours = reports.reduce((acc, r) => {
+                            const report = r.report_data || {};
+                            const dailyTotal = (report.frotas || []).reduce((fAcc, f) => {
+                                 return fAcc + (parseFloat(f.workedHoursA) || 0) + (parseFloat(f.workedHoursB) || 0);
+                            }, 0);
+                            return acc + dailyTotal;
+                        }, 0);
+                        dataPoints.push(totalHours);
+                    }
+
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Horas Trabalhadas',
+                                data: dataPoints,
+                                backgroundColor: 'rgba(249, 115, 22, 0.8)',
+                                borderRadius: 6,
+                                borderSkipped: false,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: '#1f2937',
+                                    padding: 12,
+                                    cornerRadius: 8,
+                                    callbacks: {
+                                        label: (ctx) => `${ctx.raw.toFixed(1)} horas`
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: { 
+                                    beginAtZero: true,
+                                    grid: { borderDash: [2, 4], color: '#f3f4f6' },
+                                    ticks: { font: { size: 11 } }
+                                },
+                                x: {
+                                    grid: { display: false },
+                                    ticks: { font: { size: 11 } }
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [activeView, history]);
+
             // Derived Stats
             const stats = useMemo(() => {
                 if (!history.length) return { total: 0, thisMonth: 0, activeFrentes: 0, lastUpdate: '-' };
