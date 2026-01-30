@@ -1293,15 +1293,47 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
         };
 
         const AdminPanel = ({ session, plants, onClose, onLoadEntry }) => {
-            const [activeTab, setActiveTab] = useState('history');
+            const [activeView, setActiveView] = useState('dashboard');
             const [selectedPlant, setSelectedPlant] = useState('cambui');
             const [history, setHistory] = useState([]);
             const [loading, setLoading] = useState(false);
-            const [users, setUsers] = useState([]); // Mock users for now or fetch if possible
+            const [searchTerm, setSearchTerm] = useState('');
+            const [selectedReport, setSelectedReport] = useState(null);
+            
+            // Novos estados para funcionalidades avançadas
+            const [dateRange, setDateRange] = useState({ start: '', end: '' });
+            const [selectedIds, setSelectedIds] = useState(new Set());
+            const [connectionStatus, setConnectionStatus] = useState('idle');
+
+            // Derived Stats
+            const stats = useMemo(() => {
+                if (!history.length) return { total: 0, thisMonth: 0, activeFrentes: 0, lastUpdate: '-' };
+                
+                const now = new Date();
+                const thisMonth = history.filter(r => {
+                    const d = new Date(r.date.split('/').reverse().join('-'));
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }).length;
+
+                const uniqueFrentes = new Set(history.map(r => r.frente_id)).size;
+                const lastUpdate = history[0]?.date || '-';
+
+                return {
+                    total: history.length,
+                    thisMonth,
+                    activeFrentes: uniqueFrentes,
+                    lastUpdate
+                };
+            }, [history]);
 
             useEffect(() => {
-                if (activeTab === 'history') fetchHistory();
-            }, [activeTab, selectedPlant]);
+                fetchHistory();
+                setSelectedIds(new Set());
+            }, [selectedPlant]);
+
+            useEffect(() => {
+                if (activeView === 'database') checkConnection();
+            }, [activeView, selectedPlant]);
 
             const getTableName = (plantId) => {
                 if (plantId === 'cambui') return 'daily_reports_cambui';
@@ -1318,22 +1350,35 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 const { data, error } = await supabaseClient
                     .from(tableName)
                     .select('*')
-                    .order('date', { ascending: false });
+                    .order('date', { ascending: false })
+                    .limit(500);
                 
                 if (error) {
                     console.error("Admin Fetch Error:", error);
-                    alert("Erro ao buscar histórico: " + error.message);
                 } else {
                     setHistory(data || []);
                 }
                 setLoading(false);
             };
 
+            const checkConnection = async () => {
+                setConnectionStatus('checking');
+                const tableName = getTableName(selectedPlant);
+                const { count, error } = await supabaseClient
+                    .from(tableName)
+                    .select('*', { count: 'exact', head: true });
+                
+                if (error) {
+                    setConnectionStatus('error');
+                } else {
+                    setConnectionStatus('success');
+                }
+            };
+
             const handleDelete = async (record) => {
-                if (!confirm(`Tem certeza que deseja excluir o registro de ${record.date} da frente ${record.frente_id}?`)) return;
+                if (!confirm(`ATENÇÃO: Esta ação é irreversível.\n\nDeseja excluir permanentemente o registro de ${record.date} da frente ${record.frente_id}?`)) return;
                 
                 const tableName = getTableName(selectedPlant);
-                // Try deleting by ID if available, otherwise by composite key
                 let query = supabaseClient.from(tableName).delete();
                 
                 if (record.id) {
@@ -1347,137 +1392,546 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 if (error) {
                     alert("Erro ao excluir: " + error.message);
                 } else {
-                    alert("Registro excluído com sucesso!");
-                    fetchHistory();
+                    setHistory(prev => prev.filter(h => h.id !== record.id));
+                    setSelectedIds(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(record.id);
+                        return newSet;
+                    });
                 }
+            };
+
+            const handleBulkDelete = async () => {
+                if (!selectedIds.size) return;
+                if (!confirm(`ATENÇÃO: Você vai excluir ${selectedIds.size} registros permanentemente. Continuar?`)) return;
+
+                setLoading(true);
+                const tableName = getTableName(selectedPlant);
+                const idsToDelete = Array.from(selectedIds);
+
+                const { error } = await supabaseClient
+                    .from(tableName)
+                    .delete()
+                    .in('id', idsToDelete);
+
+                if (error) {
+                    alert('Erro ao excluir em massa: ' + error.message);
+                } else {
+                    setHistory(prev => prev.filter(h => !selectedIds.has(h.id)));
+                    setSelectedIds(new Set());
+                }
+                setLoading(false);
             };
 
             const handleEdit = (record) => {
                 if (confirm(`Deseja carregar os dados de ${record.date} da frente ${record.frente_id} para edição?`)) {
                     onLoadEntry(selectedPlant, record.date, record.frente_id);
+                    onClose();
                 }
             };
 
+            const handleExportCSV = () => {
+                const headers = ['ID', 'Data', 'Frente', 'Turno A (h)', 'Turno B (h)', 'Criado em'];
+                const rows = filteredHistory.map(r => {
+                    const report = r.report_data || {};
+                    const totalA = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursA) || 0), 0);
+                    const totalB = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursB) || 0), 0);
+                    return [r.id, r.date, r.frente_id, totalA.toFixed(2), totalB.toFixed(2), r.created_at];
+                });
+                
+                const csvContent = "data:text/csv;charset=utf-8," 
+                    + headers.join(",") + "\n" 
+                    + rows.map(e => e.join(",")).join("\n");
+                    
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `relatorio_${selectedPlant}_${new Date().toISOString().slice(0,10)}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const filteredHistory = useMemo(() => {
+                return history.filter(r => {
+                    const matchSearch = r.frente_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                      r.date.includes(searchTerm);
+                    
+                    if (!matchSearch) return false;
+
+                    if (dateRange.start) {
+                        const [d, m, y] = r.date.split('/');
+                        const rDate = new Date(`${y}-${m}-${d}`);
+                        const startDate = new Date(dateRange.start);
+                        if (rDate < startDate) return false;
+                    }
+                    
+                    if (dateRange.end) {
+                        const [d, m, y] = r.date.split('/');
+                        const rDate = new Date(`${y}-${m}-${d}`);
+                        const endDate = new Date(dateRange.end);
+                        if (rDate > endDate) return false;
+                    }
+
+                    return true;
+                });
+            }, [history, searchTerm, dateRange]);
+
+            const toggleSelectAll = () => {
+                if (selectedIds.size === filteredHistory.length) {
+                    setSelectedIds(new Set());
+                } else {
+                    setSelectedIds(new Set(filteredHistory.map(r => r.id)));
+                }
+            };
+
+            const toggleSelect = (id) => {
+                setSelectedIds(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(id)) newSet.delete(id);
+                    else newSet.add(id);
+                    return newSet;
+                });
+            };
+
+            const NavItem = ({ id, icon: Icon, label }) => (
+                <button 
+                    onClick={() => setActiveView(id)}
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeView === id ? 'bg-orange-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                >
+                    <Icon size={20} />
+                    <span className="font-medium">{label}</span>
+                </button>
+            );
+
             return (
-                <div className="min-h-screen bg-gray-100 p-4 font-sans">
-                    <div className="max-w-7xl mx-auto bg-white rounded shadow-xl overflow-hidden">
-                        <div className="bg-gray-800 p-4 flex justify-between items-center text-white">
-                            <div className="flex items-center space-x-2">
-                                <Icons.Shield size={24} className="text-red-500" />
-                                <h1 className="text-xl font-bold">Painel Administrativo</h1>
+                <div className="fixed inset-0 bg-gray-900 z-[60] flex overflow-hidden font-sans">
+                    {/* Sidebar */}
+                    <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
+                        <div className="p-6 flex items-center space-x-3 border-b border-gray-800">
+                            <div className="bg-orange-600 p-2 rounded-lg">
+                                <Icons.Shield size={24} className="text-white" />
                             </div>
-                            <button onClick={onClose} className="text-gray-400 hover:text-white">
-                                <Icons.X size={24} />
-                            </button>
+                            <div>
+                                <h1 className="text-white font-bold text-lg leading-tight">Admin</h1>
+                                <p className="text-gray-500 text-xs">Painel Avançado</p>
+                            </div>
                         </div>
 
-                        <div className="flex border-b">
-                            <button 
-                                onClick={() => setActiveTab('history')}
-                                className={`px-6 py-3 font-bold ${activeTab === 'history' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
-                            >
-                                Histórico Geral
-                            </button>
-                            <button 
-                                onClick={() => setActiveTab('users')}
-                                className={`px-6 py-3 font-bold ${activeTab === 'users' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
-                            >
-                                Permissões e Usuários
-                            </button>
+                        <div className="p-4 space-y-2 flex-1 overflow-y-auto">
+                            <div className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 px-4 mt-4">Geral</div>
+                            <NavItem id="dashboard" icon={Icons.LayoutDashboard} label="Dashboard" />
+                            <NavItem id="reports" icon={Icons.FileSpreadsheet} label="Relatórios" />
+                            
+                            <div className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 px-4 mt-6">Sistema</div>
+                            <NavItem id="database" icon={({size}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>} label="Banco de Dados" />
+                            <NavItem id="users" icon={({size}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} label="Usuários" />
                         </div>
 
-                        <div className="p-6">
-                            {activeTab === 'history' && (
-                                <div>
-                                    <div className="flex space-x-2 mb-6 overflow-x-auto pb-2">
-                                        {plants.map(p => (
-                                            <button
-                                                key={p.id}
-                                                onClick={() => setSelectedPlant(p.id)}
-                                                className={`px-4 py-2 rounded-full font-bold whitespace-nowrap ${selectedPlant === p.id ? `${p.solidBgClass} text-white` : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                                            >
-                                                {p.name}
-                                            </button>
-                                        ))}
+                        <div className="p-4 border-t border-gray-800">
+                            <button onClick={onClose} className="w-full flex items-center justify-center space-x-2 bg-gray-800 text-gray-300 py-2 rounded-lg hover:bg-gray-700 hover:text-white transition-colors">
+                                <Icons.ArrowRight size={18} />
+                                <span>Sair do Admin</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex flex-col bg-gray-100 overflow-hidden">
+                        {/* Top Bar */}
+                        <div className="bg-white h-16 border-b flex items-center justify-between px-8 shadow-sm">
+                            <h2 className="text-xl font-bold text-gray-800">
+                                {activeView === 'dashboard' && 'Visão Geral'}
+                                {activeView === 'reports' && 'Gerenciamento de Relatórios'}
+                                {activeView === 'database' && 'Configuração de Banco de Dados'}
+                                {activeView === 'users' && 'Controle de Acesso'}
+                            </h2>
+                            
+                            <div className="flex items-center space-x-4">
+                                <span className="text-sm text-gray-500">Unidade Selecionada:</span>
+                                <div className="flex bg-gray-100 p-1 rounded-lg">
+                                    {plants.map(p => (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => setSelectedPlant(p.id)}
+                                            className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${selectedPlant === p.id ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            {p.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Content Area */}
+                        <div className="flex-1 overflow-y-auto p-8">
+                            {activeView === 'dashboard' && (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+                                                    <Icons.FileSpreadsheet size={24} />
+                                                </div>
+                                                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">TOTAL</span>
+                                            </div>
+                                            <div className="text-3xl font-bold text-gray-800">{stats.total}</div>
+                                            <div className="text-sm text-gray-500 mt-1">Relatórios emitidos</div>
+                                        </div>
+                                        
+                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="p-3 bg-green-50 text-green-600 rounded-lg">
+                                                    <Icons.LayoutDashboard size={24} />
+                                                </div>
+                                                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">MÊS ATUAL</span>
+                                            </div>
+                                            <div className="text-3xl font-bold text-gray-800">{stats.thisMonth}</div>
+                                            <div className="text-sm text-gray-500 mt-1">Novos relatórios</div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                                </div>
+                                                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">ATIVIDADE</span>
+                                            </div>
+                                            <div className="text-3xl font-bold text-gray-800">{stats.activeFrentes}</div>
+                                            <div className="text-sm text-gray-500 mt-1">Frentes ativas</div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="p-3 bg-orange-50 text-orange-600 rounded-lg">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                </div>
+                                                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">ULT. ATUALIZAÇÃO</span>
+                                            </div>
+                                            <div className="text-lg font-bold text-gray-800 truncate">{stats.lastUpdate}</div>
+                                            <div className="text-sm text-gray-500 mt-1">Data mais recente</div>
+                                        </div>
                                     </div>
 
-                                    {loading ? (
-                                        <div className="text-center py-10">Carregando dados...</div>
-                                    ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="min-w-full text-sm text-left text-gray-500">
-                                                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                                    <tr>
-                                                        <th className="px-6 py-3">Data</th>
-                                                        <th className="px-6 py-3">Frente</th>
-                                                        <th className="px-6 py-3">Turno A (h)</th>
-                                                        <th className="px-6 py-3">Turno B (h)</th>
-                                                        <th className="px-6 py-3">Ações</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {history.length > 0 ? history.map((row, idx) => {
-                                                        const report = row.report_data || {};
-                                                        // Calculate totals safely
-                                                        const totalA = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursA) || 0), 0);
-                                                        const totalB = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursB) || 0), 0);
-                                                        
-                                                        return (
-                                                            <tr key={idx} className="bg-white border-b hover:bg-gray-50">
-                                                                <td className="px-6 py-4 font-medium text-gray-900">{row.date}</td>
-                                                                <td className="px-6 py-4">{row.frente_id}</td>
-                                                                <td className="px-6 py-4">{totalA.toFixed(1)}</td>
-                                                                <td className="px-6 py-4">{totalB.toFixed(1)}</td>
-                                                                <td className="px-6 py-4 flex space-x-2">
-                                                                    <button 
-                                                                        onClick={() => handleEdit(row)}
-                                                                        className="text-blue-600 hover:text-blue-900 font-bold"
-                                                                    >
-                                                                        Editar
-                                                                    </button>
-                                                                    <button 
-                                                                        onClick={() => handleDelete(row)}
-                                                                        className="text-red-600 hover:text-red-900 font-bold ml-2"
-                                                                    >
-                                                                        Excluir
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    }) : (
-                                                        <tr>
-                                                            <td colSpan="5" className="text-center py-4">Nenhum registro encontrado para esta unidade.</td>
-                                                        </tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
+                                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                                        <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                                            Produção Diária (Últimos 7 dias)
+                                        </h3>
+                                        <div className="h-64 w-full">
+                                            <canvas ref={chartRef}></canvas>
                                         </div>
-                                    )}
+                                    </div>
+
+                                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                                        <h3 className="font-bold text-gray-800 mb-4">Atividade Recente ({selectedPlant})</h3>
+                                        {loading ? (
+                                            <div className="animate-pulse space-y-4">
+                                                {[1,2,3].map(i => <div key={i} className="h-12 bg-gray-100 rounded"></div>)}
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead className="bg-gray-50 text-gray-500 font-medium">
+                                                        <tr>
+                                                            <th className="px-4 py-3 rounded-l-lg">Data</th>
+                                                            <th className="px-4 py-3">Frente</th>
+                                                            <th className="px-4 py-3">Horas A</th>
+                                                            <th className="px-4 py-3">Horas B</th>
+                                                            <th className="px-4 py-3 rounded-r-lg">Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {history.slice(0, 5).map((row, idx) => {
+                                                            const report = row.report_data || {};
+                                                            const totalA = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursA) || 0), 0);
+                                                            const totalB = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursB) || 0), 0);
+                                                            return (
+                                                                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                                                    <td className="px-4 py-3 font-medium text-gray-900">{row.date}</td>
+                                                                    <td className="px-4 py-3 text-gray-600">{row.frente_id}</td>
+                                                                    <td className="px-4 py-3 text-gray-600">{totalA.toFixed(1)}h</td>
+                                                                    <td className="px-4 py-3 text-gray-600">{totalB.toFixed(1)}h</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">Sincronizado</span>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
-                            {activeTab === 'users' && (
-                                <div>
-                                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-                                        <div className="flex">
-                                            <div className="ml-3">
-                                                <p className="text-sm text-yellow-700">
-                                                    Atualmente, apenas o administrador mestre <b>gutemberggg10@gmail.com</b> tem acesso total a este painel.
+                            {activeView === 'reports' && (
+                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+                                    <div className="p-4 border-b border-gray-100 flex flex-col space-y-4 md:space-y-0 md:flex-row md:items-center md:justify-between gap-4">
+                                        {/* Search & Filters */}
+                                        <div className="flex flex-col md:flex-row gap-2 flex-1">
+                                            <div className="relative w-full md:w-64">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Buscar por data ou frente..." 
+                                                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm"
+                                                    value={searchTerm}
+                                                    onChange={e => setSearchTerm(e.target.value)}
+                                                />
+                                                <svg className="absolute left-3 top-2.5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                            </div>
+                                            
+                                            <div className="flex items-center space-x-2">
+                                                <input 
+                                                    type="date" 
+                                                    className="border rounded-lg px-3 py-2 text-sm text-gray-600 outline-none focus:ring-2 focus:ring-orange-500"
+                                                    value={dateRange.start}
+                                                    onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                                                />
+                                                <span className="text-gray-400">-</span>
+                                                <input 
+                                                    type="date" 
+                                                    className="border rounded-lg px-3 py-2 text-sm text-gray-600 outline-none focus:ring-2 focus:ring-orange-500"
+                                                    value={dateRange.end}
+                                                    onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="flex items-center space-x-2">
+                                            {selectedIds.size > 0 && (
+                                                <button 
+                                                    onClick={handleBulkDelete}
+                                                    className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium text-sm"
+                                                >
+                                                    <Icons.Trash size={16} />
+                                                    <span>Excluir ({selectedIds.size})</span>
+                                                </button>
+                                            )}
+                                            
+                                            <button 
+                                                onClick={handleExportCSV}
+                                                className="flex items-center space-x-2 px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium text-sm"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                                <span>Exportar CSV</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-gray-50 text-gray-700 font-bold sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="px-6 py-3 border-b w-10">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                                            checked={filteredHistory.length > 0 && selectedIds.size === filteredHistory.length}
+                                                            onChange={toggleSelectAll}
+                                                        />
+                                                    </th>
+                                                    <th className="px-6 py-3 border-b">Data</th>
+                                                    <th className="px-6 py-3 border-b">Frente</th>
+                                                    <th className="px-6 py-3 border-b">Turno A</th>
+                                                    <th className="px-6 py-3 border-b">Turno B</th>
+                                                    <th className="px-6 py-3 border-b text-right">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {filteredHistory.map((row, idx) => {
+                                                    const report = row.report_data || {};
+                                                    const totalA = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursA) || 0), 0);
+                                                    const totalB = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursB) || 0), 0);
+                                                    const isSelected = selectedIds.has(row.id);
+                                                    
+                                                    return (
+                                                        <tr key={row.id || idx} className={`hover:bg-gray-50 transition-colors group ${isSelected ? 'bg-orange-50' : ''}`}>
+                                                            <td className="px-6 py-4">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                                                    checked={isSelected}
+                                                                    onChange={() => toggleSelect(row.id)}
+                                                                />
+                                                            </td>
+                                                            <td className="px-6 py-4 font-medium text-gray-900">{row.date}</td>
+                                                            <td className="px-6 py-4">{row.frente_id}</td>
+                                                            <td className="px-6 py-4">{totalA.toFixed(1)}h</td>
+                                                            <td className="px-6 py-4">{totalB.toFixed(1)}h</td>
+                                                            <td className="px-6 py-4 flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <button 
+                                                                    onClick={() => setSelectedReport(row)}
+                                                                    className="p-2 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                                                                    title="Ver Detalhes (JSON)"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleEdit(row)}
+                                                                    className="p-2 bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
+                                                                    title="Editar Registro"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleDelete(row)}
+                                                                    className="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200"
+                                                                    title="Excluir Registro"
+                                                                >
+                                                                    <Icons.Trash size={16} />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {filteredHistory.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan="6" className="px-6 py-12 text-center text-gray-400">
+                                                            {searchTerm || dateRange.start || dateRange.end 
+                                                                ? 'Nenhum registro encontrado para os filtros selecionados.' 
+                                                                : 'Nenhum registro encontrado.'}
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeView === 'database' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h3 className="text-lg font-bold text-gray-800 mb-2">Status da Conexão</h3>
+                                                <p className="text-sm text-gray-500">
+                                                    Projeto: <span className="font-mono bg-gray-100 px-1 rounded">rrxkmlcxrextfxfrayfp</span>
                                                 </p>
+                                            </div>
+                                            <div className="flex items-center space-x-3 bg-gray-50 px-4 py-2 rounded-lg">
+                                                {connectionStatus === 'checking' && (
+                                                    <>
+                                                        <div className="h-3 w-3 rounded-full bg-yellow-500 animate-pulse"></div>
+                                                        <span className="text-yellow-700 font-medium text-sm">Verificando...</span>
+                                                    </>
+                                                )}
+                                                {connectionStatus === 'success' && (
+                                                    <>
+                                                        <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                                                        <span className="text-green-700 font-medium text-sm">Conectado e Operacional</span>
+                                                    </>
+                                                )}
+                                                {connectionStatus === 'error' && (
+                                                    <>
+                                                        <div className="h-3 w-3 rounded-full bg-red-500"></div>
+                                                        <span className="text-red-700 font-medium text-sm">Falha na Conexão</span>
+                                                    </>
+                                                )}
+                                                <button 
+                                                    onClick={checkConnection} 
+                                                    className="ml-2 text-xs text-blue-600 hover:underline"
+                                                    disabled={connectionStatus === 'checking'}
+                                                >
+                                                    Testar Novamente
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div className="bg-gray-900 text-gray-300 p-6 rounded-xl shadow-lg font-mono text-sm overflow-x-auto">
+                                        <h3 className="text-white font-bold mb-4 flex items-center">
+                                            <svg className="mr-2" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+                                            Script de Instalação SQL
+                                        </h3>
+                                        <p className="mb-4 text-gray-400">Use este script no SQL Editor do Supabase para criar as tabelas necessárias.</p>
+                                        <pre className="text-xs leading-relaxed">
+{`-- Tabela para Cambuí
+create table if not exists daily_reports_cambui (
+  id bigint generated by default as identity primary key,
+  frente_id text not null,
+  date date not null,
+  report_data jsonb not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(frente_id, date)
+);
+alter table daily_reports_cambui enable row level security;
+create policy "Public Access" on daily_reports_cambui for all using (true) with check (true);
+
+-- (Repetir padrão para outras unidades: panorama, vale_verdao, floresta)
+-- Consulte o arquivo original para o script completo.`}
+                                        </pre>
+                                        <button 
+                                            onClick={() => navigator.clipboard.writeText('Script copiado!')}
+                                            className="mt-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded text-xs uppercase font-bold tracking-wider"
+                                        >
+                                            Copiar Script Completo
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeView === 'users' && (
+                                <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center">
+                                    <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <svg className="text-yellow-600" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-800 mb-2">Controle de Acesso Centralizado</h3>
+                                    <p className="text-gray-500 max-w-lg mx-auto mb-8">
+                                        A gestão de usuários é controlada via Supabase Auth. Atualmente, o sistema utiliza metadados 'plant_id' para restringir acesso.
+                                    </p>
                                     
-                                    <h3 className="text-lg font-bold mb-4">Política de Acesso</h3>
-                                    <ul className="list-disc pl-5 space-y-2 text-gray-700">
-                                        <li><b>Administrador Geral:</b> Acesso total a todas as unidades, edição e exclusão de histórico. (Atribuído a: gutemberggg10@gmail.com)</li>
-                                        <li><b>Gerente de Unidade:</b> Acesso de visualização e edição apenas na sua unidade.</li>
-                                        <li><b>Operador:</b> Apenas lançamento de dados na sua unidade.</li>
-                                    </ul>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-4xl mx-auto">
+                                        <div className="p-4 border rounded-lg bg-gray-50">
+                                            <div className="font-bold text-gray-800 mb-1">Admin Geral</div>
+                                            <div className="text-xs text-gray-500 mb-2">Acesso Total</div>
+                                            <div className="text-sm font-mono bg-white p-2 rounded border">gutemberggg10@gmail.com</div>
+                                        </div>
+                                        <div className="p-4 border rounded-lg bg-gray-50">
+                                            <div className="font-bold text-gray-800 mb-1">Gerentes</div>
+                                            <div className="text-xs text-gray-500 mb-2">Acesso por Unidade</div>
+                                            <div className="text-sm text-gray-600">Definido no cadastro via seleção de usina.</div>
+                                        </div>
+                                        <div className="p-4 border rounded-lg bg-gray-50">
+                                            <div className="font-bold text-gray-800 mb-1">Operadores</div>
+                                            <div className="text-xs text-gray-500 mb-2">Acesso Restrito</div>
+                                            <div className="text-sm text-gray-600">Apenas lançamento de dados.</div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
                     </div>
+
+                    {/* Report Detail Modal */}
+                    {selectedReport && (
+                        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                                <div className="p-4 border-b flex items-center justify-between bg-gray-50">
+                                    <h3 className="font-bold text-lg">Detalhes do Relatório JSON</h3>
+                                    <button onClick={() => setSelectedReport(null)} className="p-2 hover:bg-gray-200 rounded-full">
+                                        <Icons.X size={20} />
+                                    </button>
+                                </div>
+                                <div className="p-0 flex-1 overflow-auto bg-gray-900 text-green-400 font-mono text-xs">
+                                    <pre className="p-4">
+                                        {JSON.stringify(selectedReport.report_data, null, 2)}
+                                    </pre>
+                                </div>
+                                <div className="p-4 border-t bg-gray-50 flex justify-end">
+                                    <button 
+                                        onClick={() => setSelectedReport(null)}
+                                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-bold"
+                                    >
+                                        Fechar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
