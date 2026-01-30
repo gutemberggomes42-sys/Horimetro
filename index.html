@@ -1294,6 +1294,78 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             </div>
                         </div>
                     )}
+
+                    {/* User Edit Modal */}
+                    {editingUser && (
+                        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+                                <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
+                                    <h3 className="font-bold text-lg">Editar Usuário</h3>
+                                    <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-gray-200 rounded-full">
+                                        <Icons.X size={20} />
+                                    </button>
+                                </div>
+                                <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Nome</label>
+                                        <div className="text-gray-900 bg-gray-100 p-2 rounded border border-gray-200">
+                                            {editingUser.first_name} {editingUser.last_name}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Email</label>
+                                        <div className="text-gray-900 bg-gray-100 p-2 rounded border border-gray-200">
+                                            {editingUser.email}
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Função / Cargo</label>
+                                        <select 
+                                            value={editingUser.role || 'Operador'}
+                                            onChange={e => setEditingUser({...editingUser, role: e.target.value})}
+                                            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                                        >
+                                            <option value="Operador">Operador</option>
+                                            <option value="Líder">Líder</option>
+                                            <option value="Gestor">Gestor</option>
+                                            <option value="Administrador">Administrador</option>
+                                            <option value="TI">TI</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center gap-3 p-3 border border-gray-200 rounded bg-gray-50">
+                                        <input 
+                                            type="checkbox"
+                                            id="isAdmin"
+                                            checked={editingUser.is_admin || false}
+                                            onChange={e => setEditingUser({...editingUser, is_admin: e.target.checked})}
+                                            className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 border-gray-300"
+                                        />
+                                        <label htmlFor="isAdmin" className="text-sm font-bold text-gray-700 cursor-pointer select-none">
+                                            Acesso de Administrador (Total)
+                                        </label>
+                                    </div>
+
+                                    <div className="pt-4 flex justify-end gap-2">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setEditingUser(null)}
+                                            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded font-bold transition-colors"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            type="submit"
+                                            className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 font-bold shadow-lg shadow-orange-200 transition-all"
+                                        >
+                                            Salvar Alterações
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -1313,6 +1385,31 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             const [users, setUsers] = useState([]);
             const [loadingUsers, setLoadingUsers] = useState(false);
             const [usersError, setUsersError] = useState(null);
+            const [editingUser, setEditingUser] = useState(null);
+
+            const handleUpdateUser = async (e) => {
+                e.preventDefault();
+                if (!editingUser) return;
+                
+                try {
+                    const { error } = await supabaseClient
+                        .from('profiles')
+                        .update({ 
+                            role: editingUser.role,
+                            is_admin: editingUser.is_admin
+                        })
+                        .eq('id', editingUser.id);
+
+                    if (error) throw error;
+                    
+                    setUsers(users.map(u => u.id === editingUser.id ? editingUser : u));
+                    setEditingUser(null);
+                    alert('Usuário atualizado com sucesso!');
+                } catch (err) {
+                    console.error('Erro ao atualizar usuário:', err);
+                    alert('Erro ao atualizar usuário: ' + err.message);
+                }
+            };
 
             // Chart Refs
             const chartRef = useRef(null);
@@ -2071,7 +2168,11 @@ create trigger on_auth_user_created
 insert into public.profiles (id, email, first_name, last_name, plant_id)
 select id, email, raw_user_meta_data->>'first_name', raw_user_meta_data->>'last_name', raw_user_meta_data->>'plant_id'
 from auth.users
-on conflict (id) do nothing;`}
+on conflict (id) do nothing;
+
+-- 6. Adiciona colunas de função e permissão
+alter table public.profiles add column if not exists role text default 'Operador';
+alter table public.profiles add column if not exists is_admin boolean default false;`}
                                                             </pre>
                                                             <button 
                                                                 onClick={() => navigator.clipboard.writeText(`-- 1. Cria a tabela de perfis públicos
@@ -2110,7 +2211,11 @@ create trigger on_auth_user_created
 insert into public.profiles (id, email, first_name, last_name, plant_id)
 select id, email, raw_user_meta_data->>'first_name', raw_user_meta_data->>'last_name', raw_user_meta_data->>'plant_id'
 from auth.users
-on conflict (id) do nothing;`)}
+on conflict (id) do nothing;
+
+-- 6. Adiciona colunas de função e permissão
+alter table public.profiles add column if not exists role text default 'Operador';
+alter table public.profiles add column if not exists is_admin boolean default false;`)}
                                                                 className="absolute top-2 right-2 bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded text-xs font-bold transition-colors"
                                                             >
                                                                 Copiar SQL
@@ -2127,7 +2232,9 @@ on conflict (id) do nothing;`)}
                                                             <th className="px-4 py-3 rounded-l-lg">Email</th>
                                                             <th className="px-4 py-3">Nome</th>
                                                             <th className="px-4 py-3">Unidade</th>
-                                                            <th className="px-4 py-3 rounded-r-lg">Cadastrado em</th>
+                                                            <th className="px-4 py-3">Função</th>
+                                                            <th className="px-4 py-3">Admin</th>
+                                                            <th className="px-4 py-3 rounded-r-lg">Ações</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-100">
@@ -2146,8 +2253,23 @@ on conflict (id) do nothing;`)}
                                                                         {plants.find(p => p.id === user.plant_id)?.name || user.plant_id || 'N/A'}
                                                                     </span>
                                                                 </td>
-                                                                <td className="px-4 py-3 text-gray-500 text-xs">
-                                                                    {new Date(user.created_at).toLocaleDateString('pt-BR')} {new Date(user.created_at).toLocaleTimeString('pt-BR')}
+                                                                <td className="px-4 py-3">
+                                                                    <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold uppercase">{user.role || 'Operador'}</span>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    {user.is_admin ? (
+                                                                        <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold">SIM</span>
+                                                                    ) : (
+                                                                        <span className="text-gray-400 text-xs">-</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-4 py-3 flex gap-2">
+                                                                    <button 
+                                                                        onClick={() => setEditingUser(user)} 
+                                                                        className="text-blue-600 hover:text-blue-800 font-medium text-xs hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                                                                    >
+                                                                        Editar
+                                                                    </button>
                                                                 </td>
                                                             </tr>
                                                         ))}
