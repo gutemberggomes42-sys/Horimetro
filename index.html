@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Horimetro Cambuí - Sistema Avançado</title>
     
     <!-- React & ReactDOM -->
@@ -254,6 +254,9 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             ArrowRight: ({ size = 24, className = "" }) => (
                 <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             ),
+            ArrowLeft: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            ),
             Users: ({ size = 24, className = "" }) => (
                 <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             ),
@@ -493,7 +496,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             );
         };
 
-        const EquipmentRow = ({ equipment, plant, onChange, onDelete, onTransfer, isLast, groupName, onSqlError, lastReading }) => {
+        const EquipmentRow = ({ equipment, plant, onChange, onDelete, onTransfer, isLast, groupName, onSqlError, lastReading, isAppMode }) => {
             const handleChange = (field, value) => {
                 onChange(equipment.id, field, value);
             };
@@ -585,32 +588,32 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     </td>
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.initial, 'shiftA.initial', regressionError, regressionError ? `Valor menor que anterior (${lastReading.value} em ${lastReading.date.split('-').reverse().join('/')})` : "")}</td>
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.final, 'shiftA.final', shiftAError, "Hora Final menor que Inicial!")}</td>
-                    <td className={`border-r border-gray-400 font-bold text-center ${workedAHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedAHigh ? "Mais de 24h!" : ""}>{equipment.shiftA.worked.toFixed(1)}</td>
-                    <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.maintenance, 'shiftA.maintenance')}</td>
+                    {!isAppMode && <td className={`border-r border-gray-400 font-bold text-center ${workedAHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedAHigh ? "Mais de 24h!" : ""}>{equipment.shiftA.worked.toFixed(1)}</td>}
+                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.maintenance, 'shiftA.maintenance')}</td>}
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.initial, 'shiftB.initial')}</td>
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.final, 'shiftB.final', shiftBError, "Hora Final menor que Inicial!")}</td>
-                    <td className={`border-r border-gray-400 font-bold text-center ${workedBHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedBHigh ? "Mais de 24h!" : ""}>{equipment.shiftB.worked.toFixed(1)}</td>
-                    <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.maintenance, 'shiftB.maintenance')}</td>
-                    <td className="border-r border-gray-400 bg-gray-200 font-bold text-center">{equipment.totalAB.toFixed(1)}</td>
-                    <td className="border-r border-gray-400 text-center cursor-pointer"
+                    {!isAppMode && <td className={`border-r border-gray-400 font-bold text-center ${workedBHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedBHigh ? "Mais de 24h!" : ""}>{equipment.shiftB.worked.toFixed(1)}</td>}
+                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.maintenance, 'shiftB.maintenance')}</td>}
+                    {!isAppMode && <td className="border-r border-gray-400 bg-gray-200 font-bold text-center">{equipment.totalAB.toFixed(1)}</td>}
+                    {!isAppMode && <td className="border-r border-gray-400 text-center cursor-pointer"
                         onClick={() => handleChange('status', equipment.status === 'ok' ? 'issue' : 'ok')}>
                         <div className={`flex items-center justify-center h-full w-full ${equipment.status === 'ok' ? 'text-green-600' : 'bg-red-600 text-white'}`}>
                             {equipment.status === 'ok' ? <Icons.Check size={16} /> : <Icons.X size={16} />}
                         </div>
-                    </td>
-                    <td className={`text-center p-0 relative ${equipment.obs.toLowerCase().includes('oficina') ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}>
+                    </td>}
+                    {!isAppMode && <td className={`text-center p-0 relative ${equipment.obs.toLowerCase().includes('oficina') ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}>
                         <input
                             type="text"
                             className="w-full h-full bg-transparent text-center text-white placeholder-white/70 focus:outline-none"
                             value={equipment.obs}
                             onChange={(e) => handleChange('obs', e.target.value)}
                         />
-                    </td>
+                    </td>}
                 </tr>
             );
         };
 
-        const EquipmentGroupTable = ({ group, plant, onUpdateEquipment, onUpdateGroup, onAddEquipment, onDeleteEquipment, onTransferEquipment, onSqlError, lastReadings }) => {
+        const EquipmentGroupTable = ({ group, plant, onUpdateEquipment, onUpdateGroup, onAddEquipment, onDeleteEquipment, onTransferEquipment, onSqlError, lastReadings, isAppMode }) => {
             const handleRowChange = (equipmentId, field, value) => {
                 onUpdateEquipment(group.id, equipmentId, field, value);
             };
@@ -634,22 +637,22 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         {group.name}
                     </div>
                     <div className="flex">
-                        <div className="flex-grow">
-                            <table className="w-full border-collapse">
+                        <div className="flex-grow overflow-x-auto">
+                            <table className={`w-full border-collapse ${isAppMode ? '' : 'min-w-[800px]'}`}>
                                 <thead>
                                     <tr className={`${plant.solidBgClass} text-white text-xs`}>
                                         <th className="border border-gray-400 p-1 w-20">Frota</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Final</th>
-                                        <th className="border border-gray-400 p-1 w-16">H.Trab.(A)</th>
-                                        <th className="border border-gray-400 p-1 w-16">Manut.(A)</th>
+                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">H.Trab.(A)</th>}
+                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">Manut.(A)</th>}
                                         <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Final</th>
-                                        <th className="border border-gray-400 p-1 w-16">H.Trab.(B)</th>
-                                        <th className="border border-gray-400 p-1 w-16">Manut.(B)</th>
-                                        <th className="border border-gray-400 p-1 w-16">Total A-B</th>
-                                        <th className="border border-gray-400 p-1 w-10">Status</th>
-                                        <th className="border border-gray-400 p-1">Obs.</th>
+                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">H.Trab.(B)</th>}
+                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">Manut.(B)</th>}
+                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">Total A-B</th>}
+                                        {!isAppMode && <th className="border border-gray-400 p-1 w-10">Status</th>}
+                                        {!isAppMode && <th className="border border-gray-400 p-1">Obs.</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -665,10 +668,11 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                 onTransfer={(id) => onTransferEquipment(group.id, id)}
                                                 onSqlError={onSqlError}
                                                 isLast={index === group.items.length - 1}
+                                                isAppMode={isAppMode}
                                             />
                                     ))}
                                     <tr className="bg-white">
-                                        <td colSpan={12} className="p-1 text-center border-t border-gray-300">
+                                        <td colSpan={isAppMode ? 5 : 12} className="p-1 text-center border-t border-gray-300">
                                             <button 
                                                 onClick={() => onAddEquipment(group.id)}
                                                 className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-4 rounded inline-flex items-center"
@@ -677,30 +681,34 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                             </button>
                                         </td>
                                     </tr>
-                                    <tr className={`${plant.bgClass} font-bold text-xs border-t-2 ${plant.borderClass}`}>
-                                        <td colSpan={3} className="text-right pr-2 border-r border-gray-400 py-1">TOTAL HRS GERAL TURNO A</td>
-                                        <td className="text-center border-r border-gray-400 bg-white">{totalShiftA.toFixed(1).replace('.', ',')}</td>
-                                        <td className="text-center border-r border-gray-400 bg-white">{totalMaintA.toFixed(1).replace('.', ',')}</td>
-                                        <td colSpan={2} className="text-right pr-2 border-r border-gray-400">TOTAL HRS GERAL TURNO B</td>
-                                        <td className="text-center border-r border-gray-400 bg-white">{totalShiftB.toFixed(1).replace('.', ',')}</td>
-                                        <td className="text-center border-r border-gray-400 bg-white">{totalMaintB.toFixed(1).replace('.', ',')}</td>
-                                        <td className="text-center border-r border-gray-400 bg-white">{totalAB.toFixed(1).replace('.', ',')}</td>
-                                        <td colSpan={2} className="bg-green-600"></td>
-                                    </tr>
-                                    <tr className="bg-total-yellow font-bold text-xs border-t border-orange-500">
-                                        <td colSpan={3} className="text-center py-1 border-r border-gray-400">SOMA MÉDIA "A"</td>
-                                        <td className="text-center border-r border-gray-400">{avgShiftA.toFixed(1).replace('.', ',')}</td>
-                                        <td className="text-center border-r border-gray-400">{avgMaintA.toFixed(1).replace('.', ',')}</td>
-                                        <td colSpan={2} className="text-center border-r border-gray-400">SOMA MÉDIA "B"</td>
-                                        <td className="text-center border-r border-gray-400">{avgShiftB.toFixed(1).replace('.', ',')}</td>
-                                        <td className="text-center border-r border-gray-400">{avgMaintB.toFixed(1).replace('.', ',')}</td>
-                                        <td className="text-center border-r border-gray-400">{avgTotal.toFixed(1).replace('.', ',')}</td>
-                                        <td colSpan={2} className="bg-green-600"></td>
-                                    </tr>
+                                    {!isAppMode && (
+                                        <>
+                                            <tr className={`${plant.bgClass} font-bold text-xs border-t-2 ${plant.borderClass}`}>
+                                                <td colSpan={3} className="text-right pr-2 border-r border-gray-400 py-1">TOTAL HRS GERAL TURNO A</td>
+                                                <td className="text-center border-r border-gray-400 bg-white">{totalShiftA.toFixed(1).replace('.', ',')}</td>
+                                                <td className="text-center border-r border-gray-400 bg-white">{totalMaintA.toFixed(1).replace('.', ',')}</td>
+                                                <td colSpan={2} className="text-right pr-2 border-r border-gray-400">TOTAL HRS GERAL TURNO B</td>
+                                                <td className="text-center border-r border-gray-400 bg-white">{totalShiftB.toFixed(1).replace('.', ',')}</td>
+                                                <td className="text-center border-r border-gray-400 bg-white">{totalMaintB.toFixed(1).replace('.', ',')}</td>
+                                                <td className="text-center border-r border-gray-400 bg-white">{totalAB.toFixed(1).replace('.', ',')}</td>
+                                                <td colSpan={2} className="bg-green-600"></td>
+                                            </tr>
+                                            <tr className="bg-total-yellow font-bold text-xs border-t border-orange-500">
+                                                <td colSpan={3} className="text-center py-1 border-r border-gray-400">SOMA MÉDIA "A"</td>
+                                                <td className="text-center border-r border-gray-400">{avgShiftA.toFixed(1).replace('.', ',')}</td>
+                                                <td className="text-center border-r border-gray-400">{avgMaintA.toFixed(1).replace('.', ',')}</td>
+                                                <td colSpan={2} className="text-center border-r border-gray-400">SOMA MÉDIA "B"</td>
+                                                <td className="text-center border-r border-gray-400">{avgShiftB.toFixed(1).replace('.', ',')}</td>
+                                                <td className="text-center border-r border-gray-400">{avgMaintB.toFixed(1).replace('.', ',')}</td>
+                                                <td className="text-center border-r border-gray-400">{avgTotal.toFixed(1).replace('.', ',')}</td>
+                                                <td colSpan={2} className="bg-green-600"></td>
+                                            </tr>
+                                        </>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
-                        {group.yield !== undefined && (
+                        {!isAppMode && group.yield !== undefined && (
                             <div className="w-32 bg-green-600 border-l border-black flex flex-col items-center justify-center text-center p-2 relative">
                                 <div className="text-white text-xs font-bold mb-2">{group.yieldLabel || 'Rendimento'}</div>
                                 <input 
@@ -2860,6 +2868,9 @@ on conflict (id) do nothing;`)}
             const [isAdmin, setIsAdmin] = useState(false);
             const [showAdminPanel, setShowAdminPanel] = useState(false);
 
+            // App Mode (APK) - Detect via Capacitor or URL param
+            const isAppMode = useMemo(() => window.Capacitor !== undefined || window.location.search.includes('mode=app'), []);
+
             useEffect(() => {
                 const fetchProfileAndSetAdmin = async (currentSession) => {
                     if (!currentSession?.user) {
@@ -2954,6 +2965,16 @@ on conflict (id) do nothing;`)}
             const [activeFrenteId, setActiveFrenteId] = useState('');
             
             const [view, setView] = useState('entry'); // 'entry' or 'dashboard'
+            const [entryMode, setEntryMode] = useState('list'); // 'list' or 'form'
+
+            // Force Entry View in App Mode
+            useEffect(() => {
+                if (isAppMode) {
+                    setView('entry');
+                    setEntryMode('form');
+                }
+            }, [isAppMode]);
+
             const [showSql, setShowSql] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
             const [showNewFrenteModal, setShowNewFrenteModal] = useState(false);
@@ -3112,11 +3133,25 @@ on conflict (id) do nothing;`)}
                 if (!allData[activeFrenteId]) return;
                 setIsSaving(true);
                 
-                const updates = Object.entries(allData[activeFrenteId]).map(([date, report]) => ({
-                    frente_id: activeFrenteId,
-                    date: date,
-                    report_data: report
-                }));
+                const currentUser = session?.user?.email || 'Desconhecido';
+
+                const updates = Object.entries(allData[activeFrenteId]).map(([date, report]) => {
+                    // Update report with editor info
+                    const updatedReport = {
+                        ...report,
+                        last_editor: currentUser,
+                        updated_at: new Date().toISOString()
+                    };
+                    
+                    // Update local state as well to reflect immediately
+                    allData[activeFrenteId][date] = updatedReport;
+
+                    return {
+                        frente_id: activeFrenteId,
+                        date: date,
+                        report_data: updatedReport
+                    };
+                });
 
                 if (updates.length === 0) {
                     setIsSaving(false);
@@ -3257,6 +3292,22 @@ on conflict (id) do nothing;`)}
 
                 return data || createInitialData(activeFrenteId, selectedDate, plantId);
             }, [allData, activeFrenteId, selectedDate, plantId]);
+
+            const historyList = useMemo(() => {
+                const list = [];
+                Object.entries(allData).forEach(([fId, dates]) => {
+                    Object.entries(dates).forEach(([date, data]) => {
+                        list.push({
+                            frenteId: fId,
+                            date,
+                            status: data.status || 'pending',
+                            updatedAt: data.updatedAt, // if available
+                            lastEditor: data.last_editor || data.concluded_by || '-'
+                        });
+                    });
+                });
+                return list.sort((a, b) => new Date(b.date) - new Date(a.date));
+            }, [allData]);
 
             // --- Date Helpers ---
             const getNextDate = (dateStr) => {
@@ -3701,6 +3752,59 @@ on conflict (id) do nothing;`)}
                 }
             };
 
+            const handleEditHistory = (frenteId, date) => {
+                setActiveFrenteId(frenteId);
+                setSelectedDate(date);
+                setEntryMode('form');
+            };
+
+            const handleConclude = async (frenteId, date) => {
+                if (!confirm('Deseja realmente concluir este lançamento?')) return;
+                
+                const report = allData[frenteId]?.[date];
+                if (!report) return;
+
+                const currentUser = session?.user?.email || 'Desconhecido';
+                const updatedReport = { 
+                    ...report, 
+                    status: 'completed',
+                    concluded_by: currentUser,
+                    last_editor: currentUser,
+                    updated_at: new Date().toISOString()
+                };
+
+                // Optimistic update
+                setAllData(prev => ({
+                    ...prev,
+                    [frenteId]: {
+                        ...prev[frenteId],
+                        [date]: updatedReport
+                    }
+                }));
+
+                try {
+                    let tableName = 'daily_reports'; 
+                    if (plantId === 'cambui') tableName = 'daily_reports_cambui';
+                    else if (plantId === 'panorama') tableName = 'daily_reports_panorama';
+                    else if (plantId === 'vale-verdao') tableName = 'daily_reports_vale_verdao';
+                    else if (plantId === 'floresta') tableName = 'daily_reports_floresta';
+
+                    const { error } = await supabaseClient
+                        .from(tableName)
+                        .upsert({
+                            frente_id: frenteId,
+                            date: date,
+                            report_data: updatedReport
+                        }, { onConflict: 'frente_id, date' });
+
+                    if (error) throw error;
+                    setNotification({ message: 'Lançamento concluído com sucesso!', type: 'success' });
+                } catch (err) {
+                    console.error("Error concluding:", err);
+                    setNotification({ message: 'Erro ao concluir lançamento.', type: 'error' });
+                }
+            };
+
             const handleLoadEntry = (targetPlantId, targetDate, targetFrenteId) => {
                 setPlantId(targetPlantId);
                 setSelectedDate(targetDate);
@@ -3856,8 +3960,8 @@ on conflict (id) do nothing;`)}
                     )}
                     {/* Top Navigation Bar */}
                     <div className="bg-gray-800 text-white shadow-lg sticky top-0 z-50">
-                        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-                            <div className="flex items-center space-x-4">
+                        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center space-y-3 md:space-y-0">
+                            <div className="flex items-center justify-center space-x-4 w-full md:w-auto">
                                 <div className="flex flex-col relative group">
                                     <div className="flex items-center space-x-2 cursor-pointer">
                                         <select 
@@ -3871,28 +3975,33 @@ on conflict (id) do nothing;`)}
                                         </select>
                                         <Icons.ChevronDown size={16} className={`absolute right-0 top-1.5 pointer-events-none ${plant.color}`} />
                                     </div>
-                                    <span className="text-xs text-white font-normal block">Sistema de Gestão</span>
+                                    <span className="text-xs text-white font-normal block text-center md:text-left">Sistema de Gestão</span>
                                 </div>
-                                <div className="h-8 w-px bg-gray-600 mx-2"></div>
-                                <div className="flex space-x-2">
-                                    <button 
-                                        onClick={() => setView('entry')}
-                                        className={`px-3 py-1 rounded flex items-center space-x-1 ${view === 'entry' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-                                    >
-                                        <Icons.FileSpreadsheet size={18} />
-                                        <span>Lançamento</span>
-                                    </button>
-                                    <button 
-                                        onClick={() => setView('dashboard')}
-                                        className={`px-3 py-1 rounded flex items-center space-x-1 ${view === 'dashboard' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-                                    >
-                                        <Icons.LayoutDashboard size={18} />
-                                        <span>Dashboard</span>
-                                    </button>
-                                </div>
+                                
+                                {!isAppMode && (
+                                    <>
+                                        <div className="h-8 w-px bg-gray-600 mx-2 hidden md:block"></div>
+                                        <div className="flex space-x-2 hidden md:flex">
+                                            <button 
+                                                onClick={() => setView('entry')}
+                                                className={`px-3 py-1 rounded flex items-center space-x-1 ${view === 'entry' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+                                            >
+                                                <Icons.FileSpreadsheet size={18} />
+                                                <span>Lançamento</span>
+                                            </button>
+                                            <button 
+                                                onClick={() => setView('dashboard')}
+                                                className={`px-3 py-1 rounded flex items-center space-x-1 ${view === 'dashboard' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+                                            >
+                                                <Icons.LayoutDashboard size={18} />
+                                                <span>Dashboard</span>
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
                             </div>
 
-                            <div className="flex items-center space-x-4">
+                            <div className="flex flex-wrap items-center justify-center gap-2 w-full md:w-auto">
                                 <button 
                                     onClick={handleSave} 
                                     disabled={isSaving}
@@ -3907,10 +4016,10 @@ on conflict (id) do nothing;`)}
                                     <span>{isSaving ? 'Salvando...' : 'Salvar'}</span>
                                 </button>
 
-                                <div className="h-6 w-px bg-gray-600 mx-2"></div>
+                                <div className="h-6 w-px bg-gray-600 mx-2 hidden md:block"></div>
 
                                 <div className="flex items-center bg-gray-700 rounded px-2 py-1 border border-gray-600">
-                                    <span className="text-gray-400 text-sm mr-2">Data do Lançamento:</span>
+                                    <span className="text-gray-400 text-sm mr-2 hidden sm:inline">{isAppMode ? 'Data:' : 'Data do Lançamento:'}</span>
                                     <input 
                                         type="date" 
                                         value={selectedDate}
@@ -3921,30 +4030,32 @@ on conflict (id) do nothing;`)}
                                     />
                                 </div>
 
-                                <div className="h-6 w-px bg-gray-600 mx-2"></div>
+                                <div className="h-6 w-px bg-gray-600 mx-2 hidden md:block"></div>
 
-                                <label className="text-sm text-gray-400">Frente:</label>
-                                <select 
-                                    value={activeFrenteId} 
-                                    onChange={(e) => setActiveFrenteId(e.target.value)}
-                                    className="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 focus:outline-none focus:border-orange-500"
-                                >
-                                    {Object.keys(allData).map(key => (
-                                        <option key={key} value={key}>{key}</option>
-                                    ))}
-                                </select>
-                                <button onClick={() => setShowNewFrenteModal(true)} className="bg-green-600 hover:bg-green-700 p-1 rounded text-white" title="Adicionar Frente">
-                                    <Icons.Plus size={20} />
-                                </button>
-                                {activeFrenteId && (
-                                    <button onClick={deleteFrente} className="bg-red-600 hover:bg-red-700 p-1 rounded text-white" title="Excluir Frente Atual">
-                                        <Icons.Trash size={20} />
+                                <div className="flex items-center space-x-2 bg-gray-700/50 p-1 rounded">
+                                    <label className="text-sm text-gray-400 hidden sm:inline">Frente:</label>
+                                    <select 
+                                        value={activeFrenteId} 
+                                        onChange={(e) => setActiveFrenteId(e.target.value)}
+                                        className="bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 focus:outline-none focus:border-orange-500"
+                                    >
+                                        {Object.keys(allData).map(key => (
+                                            <option key={key} value={key}>{key}</option>
+                                        ))}
+                                    </select>
+                                    <button onClick={() => setShowNewFrenteModal(true)} className="bg-green-600 hover:bg-green-700 p-1 rounded text-white" title="Adicionar Frente">
+                                        <Icons.Plus size={20} />
                                     </button>
-                                )}
+                                    {activeFrenteId && (
+                                        <button onClick={deleteFrente} className="bg-red-600 hover:bg-red-700 p-1 rounded text-white" title="Excluir Frente Atual">
+                                            <Icons.Trash size={20} />
+                                        </button>
+                                    )}
+                                </div>
                                 
-                                <div className="h-6 w-px bg-gray-600 mx-2"></div>
+                                <div className="h-6 w-px bg-gray-600 mx-2 hidden md:block"></div>
                                 
-                                {isAdmin && (
+                                {isAdmin && !isAppMode && (
                                     <>
                                         <button 
                                             onClick={() => setShowAdminPanel(true)} 
@@ -3959,10 +4070,10 @@ on conflict (id) do nothing;`)}
 
                                 <button 
                                     onClick={() => supabaseClient.auth.signOut()} 
-                                    className="text-gray-300 hover:text-white text-sm font-medium flex items-center space-x-1"
+                                    className="text-gray-300 hover:text-white text-sm font-medium flex items-center space-x-1 ml-2"
                                     title="Sair do sistema"
                                 >
-                                    <span>Sair</span>
+                                    <span className="hidden sm:inline">Sair</span>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                                 </button>
                             </div>
@@ -3990,42 +4101,133 @@ on conflict (id) do nothing;`)}
                                 </button>
                             </div>
                         ) : view === 'entry' ? (
-                            <div className="bg-white p-4 shadow-lg rounded">
-                                {currentData ? (
-                                    <>
-                                        {/* Report Header */}
-                                        <div className="bg-white mb-4">
-                                            <div className={`flex justify-between items-end border-b-2 ${plant.borderClass} pb-2 mb-2`}>
-                                                <div className="w-48 flex items-center space-x-2">
-                                                    <PlantLogo plant={plant} />
-                                                    <div className="block"> 
-                                                        <div className={`text-3xl font-black ${plant.color} tracking-tighter leading-none`}>{plant.name}</div>
-                                                        <div className="text-sm font-bold text-black leading-none ml-1">{plant.subtitle}</div>
-                                                    </div>
-                                                </div>
-                                                <div className="text-center flex-grow px-4">
-                                                    <h1 className={`text-2xl font-bold italic text-black ${plant.bgClass} rounded px-2`}>
-                                                        Horas Trabalhadas por Equipamentos. {activeFrenteId}
-                                                    </h1>
-                                                </div>
-                                                <div className="w-32"></div>
-                                            </div>
-                                            
-                                            <div className="flex border border-black text-xs font-bold text-center bg-gray-100">
-                                                <div className="w-24 border-r border-black flex items-center justify-center p-1 bg-white">Turnos</div>
-                                                <div className="flex-grow flex flex-col">
-                                                    <div className="border-b border-black p-1 bg-white">FECHAMENTO HORIMETRO</div>
-                                                    <div className="flex flex-grow">
-                                                        <div className="w-1/2 border-r border-black p-1 bg-white">"A"</div>
-                                                        <div className="w-1/2 p-1 bg-white">"B"</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className={`${plant.solidBgClass} text-center font-bold text-xl border-x border-b border-black py-1 text-white mt-1 shadow-md`}>
-                                                Horimetro das Colhedoras e Tratores
-                                            </div>
+                            <div className="bg-white p-2 md:p-4 shadow-lg rounded overflow-hidden">
+                                {entryMode === 'list' && !isAppMode ? (
+                                    <div className="p-4">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <h2 className="text-2xl font-bold text-gray-800">Histórico de Lançamentos</h2>
+                                            <button 
+                                                onClick={() => {
+                                                    setEntryMode('form');
+                                                }}
+                                                className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 font-bold flex items-center space-x-2"
+                                            >
+                                                <Icons.Plus size={20} />
+                                                <span>Novo Lançamento</span>
+                                            </button>
                                         </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full bg-white border border-gray-200">
+                                                <thead className="bg-gray-50">
+                                                    <tr>
+                                                        <th className="px-6 py-3 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                                                        <th className="px-6 py-3 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frente</th>
+                                                        <th className="px-6 py-3 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                        <th className="px-6 py-3 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário</th>
+                                                        <th className="px-6 py-3 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200">
+                                                    {historyList.map((item, idx) => (
+                                                        <tr key={idx} className="hover:bg-gray-50">
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                                {new Date(item.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.frenteId}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                                                    item.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                                                }`}>
+                                                                    {item.status === 'completed' ? 'Concluído' : 'Pendente'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 max-w-[150px] truncate" title={item.lastEditor}>
+                                                                {item.lastEditor}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                                                <button 
+                                                                    onClick={() => handleEditHistory(item.frenteId, item.date)}
+                                                                    className="text-indigo-600 hover:text-indigo-900 font-bold"
+                                                                >
+                                                                    Editar
+                                                                </button>
+                                                                {item.status !== 'completed' && (
+                                                                    <button 
+                                                                        onClick={() => handleConclude(item.frenteId, item.date)}
+                                                                        className="text-green-600 hover:text-green-900 font-bold"
+                                                                    >
+                                                                        Concluir
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {historyList.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                                                                Nenhum lançamento encontrado.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {!isAppMode && (
+                                            <button 
+                                                onClick={() => setEntryMode('list')}
+                                                className="mb-4 text-gray-600 hover:text-gray-900 flex items-center space-x-1"
+                                            >
+                                                <Icons.ArrowLeft size={20} />
+                                                <span>Voltar para Histórico</span>
+                                            </button>
+                                        )}
+                                        {currentData ? (
+                                            <>
+                                                {/* Report Header */}
+                                                {!isAppMode ? (
+                                            <div className="bg-white mb-4">
+                                                <div className={`flex flex-col md:flex-row justify-between items-center md:items-end border-b-2 ${plant.borderClass} pb-2 mb-2`}>
+                                                    <div className="w-full md:w-48 flex items-center justify-center md:justify-start space-x-2 mb-2 md:mb-0">
+                                                        <PlantLogo plant={plant} />
+                                                        <div className="block text-left"> 
+                                                            <div className={`text-3xl font-black ${plant.color} tracking-tighter leading-none`}>{plant.name}</div>
+                                                            <div className="text-sm font-bold text-black leading-none ml-1">{plant.subtitle}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-center flex-grow px-2 md:px-4 w-full md:w-auto mb-2 md:mb-0">
+                                                        <h1 className={`text-xl md:text-2xl font-bold italic text-black ${plant.bgClass} rounded px-2`}>
+                                                            Horas Trabalhadas por Equipamentos. {activeFrenteId}
+                                                        </h1>
+                                                    </div>
+                                                    <div className="w-full md:w-32 hidden md:block"></div>
+                                                </div>
+                                                
+                                                <div className="flex border border-black text-xs font-bold text-center bg-gray-100 overflow-x-auto">
+                                                    <div className="w-24 min-w-[6rem] border-r border-black flex items-center justify-center p-1 bg-white">Turnos</div>
+                                                    <div className="flex-grow flex flex-col min-w-[12rem]">
+                                                        <div className="border-b border-black p-1 bg-white">FECHAMENTO HORIMETRO</div>
+                                                        <div className="flex flex-grow">
+                                                            <div className="w-1/2 border-r border-black p-1 bg-white">"A"</div>
+                                                            <div className="w-1/2 p-1 bg-white">"B"</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className={`${plant.solidBgClass} text-center font-bold text-lg md:text-xl border-x border-b border-black py-1 text-white mt-1 shadow-md`}>
+                                                    Horimetro das Colhedoras e Tratores
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-white mb-2 pb-2 border-b-2 border-orange-500">
+                                                <h1 className="text-xl font-bold text-center text-orange-600 uppercase tracking-tighter">
+                                                    Lançamento: {activeFrenteId}
+                                                </h1>
+                                            </div>
+                                        )}
 
                                         <div className="grid grid-cols-1 gap-4">
                                             {currentData.groups.map(group => (
@@ -4040,6 +4242,7 @@ on conflict (id) do nothing;`)}
                                                     onDeleteEquipment={deleteEquipment}
                                                     onTransferEquipment={handleTransferEquipment}
                                                     onSqlError={() => setShowSql(true)}
+                                                    isAppMode={isAppMode}
                                                 />
                                             ))}
                                         </div>
@@ -4055,6 +4258,8 @@ on conflict (id) do nothing;`)}
                                             Criar Nova Frente
                                         </button>
                                     </div>
+                                )}
+                                    </>
                                 )}
                             </div>
                         ) : (

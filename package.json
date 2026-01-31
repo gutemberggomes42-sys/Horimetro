@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:web": "tsc && vite build",
-    "build:android": "tsc && vite build && npx cap sync && cd android && gradlew assembleDebug",
+    "build:vite": "tsc && vite build",
+    "build:web": "node prepare_standalone.js",
+    "build:android": "node prepare_standalone.js && npx cap sync && cd android && gradlew assembleDebug",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },

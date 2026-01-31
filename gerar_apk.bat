@@ -1,92 +1,101 @@
 @echo off
 setlocal
 echo ===================================================
-echo   GERADOR AUTOMATICO DE APK - HORIMETRO (V2)
+echo   GERADOR AUTOMATICO DE APK - HORIMETRO (AUTO)
 echo ===================================================
 echo.
 
 echo [1/7] Verificando Node.js...
 node -v >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Node.js nao encontrado. Tentando instalar via Winget...
-    winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
-    echo.
-    echo Por favor, REINICIE este script apos a instalacao do Node.js terminar.
-    echo (Feche esta janela e abra novamente o arquivo gerar_apk_completo.bat)
-    pause
-    exit /b
+    echo [ERRO] Node.js nao encontrado. Instale o Node.js.
+    exit /b 1
 ) else (
     echo Node.js detectado.
 )
 
 echo.
 echo [2/7] Verificando Java (JDK)...
-java -version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Java nao encontrado. Tentando instalar OpenJDK via Winget...
-    winget install -e --id Microsoft.OpenJDK.17 --accept-source-agreements --accept-package-agreements
-    echo.
-    echo Por favor, REINICIE este script apos a instalacao do Java terminar.
-    pause
-    exit /b
+if exist "%~dp0android\jdk\jdk-17.0.2\bin\java.exe" (
+    set "JAVA_HOME=%~dp0android\jdk\jdk-17.0.2"
+    set "PATH=%~dp0android\jdk\jdk-17.0.2\bin;%PATH%"
+    echo Java encontrado localmente.
 ) else (
-    echo Java detectado.
+    echo Java local nao encontrado. Tentando sistema...
+    java -version >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo [ERRO] Java nao encontrado. Executando setup...
+        powershell -ExecutionPolicy Bypass -File "%~dp0setup_jdk.ps1"
+        if exist "%~dp0android\jdk\jdk-17.0.2\bin\java.exe" (
+            set "JAVA_HOME=%~dp0android\jdk\jdk-17.0.2"
+            set "PATH=%~dp0android\jdk\jdk-17.0.2\bin;%PATH%"
+        ) else (
+            echo [ERRO] Falha ao instalar Java.
+            exit /b 1
+        )
+    )
 )
 
 echo.
-echo [3/7] Instalando dependencias do projeto...
-call npm install
-if %errorlevel% neq 0 (
-    echo [ERRO] Falha no npm install.
-    pause
-    exit /b 1
+echo [3/7] Configurando Android SDK...
+if exist "%~dp0android\sdk" (
+    set "ANDROID_HOME=%~dp0android\sdk"
+    echo Android SDK encontrado localmente.
+) else (
+    echo Android SDK local nao encontrado. Executando setup...
+    powershell -ExecutionPolicy Bypass -File "%~dp0setup_sdk.ps1"
+    if exist "%~dp0android\sdk" (
+        set "ANDROID_HOME=%~dp0android\sdk"
+    ) else (
+        echo [AVISO] SDK nao encontrado em android\sdk. O build pode falhar se nao houver SDK no sistema.
+    )
 )
 
 echo.
 echo [4/7] Gerando build da aplicacao web...
-call npm run build:web
-
-echo.
-echo [5/7] Configurando plataforma Android...
-if not exist "android" (
-    echo Criando projeto Android...
-    call npx cap add android
-)
-
-echo Sincronizando arquivos...
-call npx cap sync
-
-echo.
-echo [6/7] Compilando APK (Gradle)...
-if exist "android" (
-    cd android
-    if not exist "gradlew.bat" (
-        echo [ERRO] gradlew.bat nao encontrado!
-        cd ..
-        pause
-        exit /b 1
-    )
-    echo Iniciando build do APK...
-    call gradlew.bat assembleDebug
-    cd ..
-) else (
-    echo [ERRO] Pasta android nao encontrada.
-    pause
+node prepare_standalone.js
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha no build web.
     exit /b 1
 )
 
 echo.
-echo [7/7] Verificando APK...
-if exist "android\app\build\outputs\apk\debug\app-debug.apk" (
-    echo.
-    echo ===================================================
-    echo   SUCESSO! O APK FOI GERADO.
-    echo ===================================================
-    copy "android\app\build\outputs\apk\debug\app-debug.apk" "%USERPROFILE%\Desktop\Horimetro-Debug.apk"
-    echo Arquivo copiado para sua Area de Trabalho: Horimetro-Debug.apk
-) else (
-    echo [ERRO] APK nao encontrado. Verifique o console.
+echo [5/7] Sincronizando Capacitor...
+if not exist "android" (
+    echo Criando projeto Android...
+    node node_modules/@capacitor/cli/bin/capacitor add android
 )
+node node_modules/@capacitor/cli/bin/capacitor sync
 
 echo.
-pause
+echo [6/7] Compilando APK (Gradle)...
+cd android
+call gradlew.bat assembleDebug
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha no build do APK.
+    cd ..
+    exit /b 1
+)
+cd ..
+
+echo.
+echo [7/7] Copiando APK...
+set "SOURCE=android\app\build\outputs\apk\debug\app-debug.apk"
+set "DEST=%USERPROFILE%\Desktop\Horimetro-Debug.apk"
+if exist "%USERPROFILE%\OneDrive\Desktop" (
+    set "DEST=%USERPROFILE%\OneDrive\Desktop\Horimetro-Debug.apk"
+)
+
+if exist "%SOURCE%" (
+    copy /Y "%SOURCE%" "%DEST%"
+    echo.
+    echo ===================================================
+    echo   SUCESSO! O APK FOI GERADO EM:
+    echo   %DEST%
+    echo ===================================================
+) else (
+    echo [ERRO] APK nao encontrado na saida do build.
+    exit /b 1
+)
+
+exit /b 0
