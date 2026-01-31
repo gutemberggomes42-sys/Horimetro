@@ -1298,81 +1298,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         </div>
                     )}
 
-                    {/* User Edit Modal */}
-                    {editingUser && (
-                        <div className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
-                                <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
-                                    <h3 className="font-bold text-lg">Editar Usuário</h3>
-                                    <button 
-                                        type="button"
-                                        onClick={() => setEditingUser(null)} 
-                                        className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                                    >
-                                        <Icons.X size={20} />
-                                    </button>
-                                </div>
-                                <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Nome</label>
-                                        <div className="text-gray-900 bg-gray-100 p-2 rounded border border-gray-200">
-                                            {editingUser.first_name} {editingUser.last_name}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Email</label>
-                                        <div className="text-gray-900 bg-gray-100 p-2 rounded border border-gray-200">
-                                            {editingUser.email}
-                                        </div>
-                                    </div>
-                                    
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Função / Cargo</label>
-                                        <select 
-                                            value={editingUser.role || 'Operador'}
-                                            onChange={e => setEditingUser({...editingUser, role: e.target.value})}
-                                            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
-                                        >
-                                            <option value="Operador">Operador</option>
-                                            <option value="Líder">Líder</option>
-                                            <option value="Gestor">Gestor</option>
-                                            <option value="Administrador">Administrador</option>
-                                            <option value="TI">TI</option>
-                                        </select>
-                                    </div>
 
-                                    <div className="flex items-center gap-3 p-3 border border-gray-200 rounded bg-gray-50">
-                                        <input 
-                                            type="checkbox"
-                                            id="isAdmin"
-                                            checked={editingUser.is_admin || false}
-                                            onChange={e => setEditingUser({...editingUser, is_admin: e.target.checked})}
-                                            className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 border-gray-300"
-                                        />
-                                        <label htmlFor="isAdmin" className="text-sm font-bold text-gray-700 cursor-pointer select-none">
-                                            Acesso de Administrador (Total)
-                                        </label>
-                                    </div>
-
-                                    <div className="pt-4 flex justify-end gap-2">
-                                        <button 
-                                            type="button"
-                                            onClick={() => setEditingUser(null)}
-                                            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded font-bold transition-colors"
-                                        >
-                                            Cancelar
-                                        </button>
-                                        <button 
-                                            type="submit"
-                                            className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 font-bold shadow-lg shadow-orange-200 transition-all"
-                                        >
-                                            Salvar Alterações
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
         };
@@ -1398,24 +1324,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 e.preventDefault();
                 if (!editingUser) return;
                 
-                try {
-                    const { error } = await supabaseClient
-                        .from('profiles')
-                        .update({ 
-                            role: editingUser.role,
-                            is_admin: editingUser.is_admin
-                        })
-                        .eq('id', editingUser.id);
-
-                    if (error) throw error;
-                    
-                    setUsers(users.map(u => u.id === editingUser.id ? editingUser : u));
-                    setEditingUser(null);
-                    alert('Usuário atualizado com sucesso!');
-                } catch (err) {
-                    console.error('Erro ao atualizar usuário:', err);
-                    alert('Erro ao atualizar usuário: ' + err.message);
-                }
+                await handleSaveUser(editingUser);
             };
 
             // Chart Refs
@@ -1556,6 +1465,28 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     setUsers(data || []);
                 }
                 setLoadingUsers(false);
+            };
+
+            const handleSaveUser = async (updatedUser) => {
+                try {
+                    const { error } = await supabaseClient
+                        .from('profiles')
+                        .update({
+                            plant_id: updatedUser.plant_id,
+                            role: updatedUser.role,
+                            is_admin: updatedUser.is_admin
+                        })
+                        .eq('id', updatedUser.id);
+
+                    if (error) throw error;
+
+                    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                    setEditingUser(null);
+                    alert('Usuário atualizado com sucesso!');
+                } catch (error) {
+                    console.error('Erro ao atualizar usuário:', error);
+                    alert(`Erro ao atualizar usuário: ${error.message}\n\nProvável causa: Permissões insuficientes (RLS).\nExecute o script SQL atualizado no painel do Supabase para permitir que admins editem outros usuários.`);
+                }
             };
 
             const getTableName = (plantId) => {
@@ -2154,6 +2085,9 @@ alter table public.profiles enable row level security;
 create policy "Public profiles are viewable by everyone." on profiles for select using (true);
 create policy "Users can insert own profile." on profiles for insert with check (auth.uid() = id);
 create policy "Users can update own profile." on profiles for update using (auth.uid() = id);
+create policy "Admins can update all profiles." on profiles for update using (
+  exists (select 1 from profiles where id = auth.uid() and is_admin = true)
+);
 
 -- 3. Cria função para sincronizar novos usuários
 create or replace function public.handle_new_user() 
@@ -2192,13 +2126,30 @@ create table if not exists public.profiles (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. Habilita segurança (RLS)
+-- 2. Adiciona colunas de função e permissão (IMPORTANTE: Antes das policies)
+alter table public.profiles add column if not exists role text default 'Operador';
+alter table public.profiles add column if not exists is_admin boolean default false;
+
+-- 3. Habilita segurança (RLS)
 alter table public.profiles enable row level security;
+
+-- Limpa policies antigas para evitar erros
+drop policy if exists "Public profiles are viewable by everyone." on profiles;
+drop policy if exists "Users can insert own profile." on profiles;
+drop policy if exists "Users can update own profile." on profiles;
+drop policy if exists "Admins can update all profiles." on profiles;
+
 create policy "Public profiles are viewable by everyone." on profiles for select using (true);
 create policy "Users can insert own profile." on profiles for insert with check (auth.uid() = id);
 create policy "Users can update own profile." on profiles for update using (auth.uid() = id);
 
--- 3. Cria função para sincronizar novos usuários
+create policy "Admins can update all profiles." on profiles for update using (
+  exists (select 1 from profiles where id = auth.uid() and is_admin = true)
+  or
+  (auth.jwt() ->> 'email') = 'gutemberggg10@gmail.com'
+);
+
+-- 4. Cria função para sincronizar novos usuários
 create or replace function public.handle_new_user() 
 returns trigger as $$
 begin
@@ -2208,21 +2159,20 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- 4. Cria trigger para novos cadastros
+-- 5. Cria trigger para novos cadastros
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- 5. Sincroniza usuários já existentes
+-- 6. Sincroniza usuários já existentes
 insert into public.profiles (id, email, first_name, last_name, plant_id)
 select id, email, raw_user_meta_data->>'first_name', raw_user_meta_data->>'last_name', raw_user_meta_data->>'plant_id'
 from auth.users
 on conflict (id) do nothing;
 
--- 6. Adiciona colunas de função e permissão
-alter table public.profiles add column if not exists role text default 'Operador';
-alter table public.profiles add column if not exists is_admin boolean default false;`)}
+-- 7. Garante que o Super Admin tenha permissão
+update public.profiles set is_admin = true where email = 'gutemberggg10@gmail.com';`)}
                                                                 className="absolute top-2 right-2 bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded text-xs font-bold transition-colors"
                                                             >
                                                                 Copiar SQL
@@ -2350,6 +2300,89 @@ on conflict (id) do nothing;`)}
                                         className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-bold"
                                     >
                                         Fechar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* User Edit Modal */}
+                    {editingUser && (
+                        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+                                <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+                                    <h3 className="font-bold text-gray-800">Editar Acesso de Usuário</h3>
+                                    <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                                        <Icons.X size={20} />
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                                        <div className="text-gray-900 font-medium bg-gray-50 px-3 py-2 rounded border border-gray-200">{editingUser.email}</div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Unidade (Acesso)</label>
+                                        <select 
+                                            value={editingUser.plant_id || ''} 
+                                            onChange={e => setEditingUser({...editingUser, plant_id: e.target.value})}
+                                            className="w-full border-gray-300 rounded-lg shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2"
+                                        >
+                                            <option value="">Selecione uma unidade...</option>
+                                            {plants.map(p => (
+                                                <option key={p.id} value={p.id}>{p.name}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-gray-500 mt-1">Define quais dados este usuário pode visualizar.</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Função</label>
+                                        <select 
+                                            value={editingUser.role || 'Operador'} 
+                                            onChange={e => setEditingUser({...editingUser, role: e.target.value})}
+                                            className="w-full border-gray-300 rounded-lg shadow-sm focus:border-orange-500 focus:ring-orange-500 py-2"
+                                        >
+                                            <option value="Operador">Operador</option>
+                                            <option value="Gerente">Gerente</option>
+                                            <option value="Auditor">Auditor</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-start space-x-3 bg-purple-50 p-4 rounded-lg border border-purple-100">
+                                        <div className="flex items-center h-5">
+                                            <input 
+                                                type="checkbox" 
+                                                id="isAdmin"
+                                                checked={editingUser.is_admin || false}
+                                                onChange={e => setEditingUser({...editingUser, is_admin: e.target.checked})}
+                                                className="rounded border-purple-300 text-purple-600 focus:ring-purple-500 h-4 w-4"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="isAdmin" className="text-sm font-bold text-purple-900 cursor-pointer select-none">
+                                                Conceder Acesso de Administrador
+                                            </label>
+                                            <p className="text-xs text-purple-700 mt-1">
+                                                Administradores têm acesso total a todas as unidades, configurações e gerenciamento de usuários.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-100">
+                                    <button 
+                                        onClick={() => setEditingUser(null)}
+                                        className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button 
+                                        onClick={() => handleSaveUser(editingUser)}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-sm transition-colors flex items-center gap-2"
+                                    >
+                                        <Icons.Check size={16} />
+                                        Salvar Alterações
                                     </button>
                                 </div>
                             </div>
@@ -2576,34 +2609,59 @@ on conflict (id) do nothing;`)}
 
         const App = () => {
             const [session, setSession] = useState(null);
+            const [userProfile, setUserProfile] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
             const [showAdminPanel, setShowAdminPanel] = useState(false);
 
             useEffect(() => {
-                const checkAdmin = (session) => {
-                    if (session?.user?.email === 'gutemberggg10@gmail.com') {
-                        setIsAdmin(true);
-                    } else {
+                const fetchProfileAndSetAdmin = async (currentSession) => {
+                    if (!currentSession?.user) {
+                        setUserProfile(null);
                         setIsAdmin(false);
+                        return;
+                    }
+
+                    try {
+                        const { data, error } = await supabaseClient
+                            .from('profiles')
+                            .select('*')
+                            .eq('id', currentSession.user.id)
+                            .single();
+                        
+                        if (data) {
+                            setUserProfile(data);
+                            // Admin if email matches hardcoded OR profile says is_admin
+                            const isUserAdmin = currentSession.user.email === 'gutemberggg10@gmail.com' || data.is_admin === true;
+                            setIsAdmin(isUserAdmin);
+                            
+                            // If user has a specific plant assigned and is NOT admin, force that plant
+                            if (data.plant_id && !isUserAdmin) {
+                                setPlantId(data.plant_id);
+                            }
+                        } else {
+                            // Fallback to metadata if profile not found
+                            const isUserAdmin = currentSession.user.email === 'gutemberggg10@gmail.com';
+                            setIsAdmin(isUserAdmin);
+                            if (currentSession.user.user_metadata?.plant_id && !isUserAdmin) {
+                                setPlantId(currentSession.user.user_metadata.plant_id);
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Error fetching profile:", err);
+                        setIsAdmin(currentSession.user.email === 'gutemberggg10@gmail.com');
                     }
                 };
 
                 supabaseClient.auth.getSession().then(({ data: { session } }) => {
                     setSession(session);
-                    checkAdmin(session);
-                    if (session?.user?.user_metadata?.plant_id) {
-                         setPlantId(session.user.user_metadata.plant_id);
-                    }
+                    fetchProfileAndSetAdmin(session);
                 });
 
                 const {
                     data: { subscription },
                 } = supabaseClient.auth.onAuthStateChange((_event, session) => {
                     setSession(session);
-                    checkAdmin(session);
-                    if (session?.user?.user_metadata?.plant_id) {
-                         setPlantId(session.user.user_metadata.plant_id);
-                    }
+                    fetchProfileAndSetAdmin(session);
                 });
 
                 return () => subscription.unsubscribe();
@@ -2616,17 +2674,13 @@ on conflict (id) do nothing;`)}
                 if (!session) return PLANTS;
                 if (isAdmin) return PLANTS;
                 
-                const userPlantId = session.user?.user_metadata?.plant_id;
+                const userPlantId = userProfile?.plant_id || session.user?.user_metadata?.plant_id;
                 if (userPlantId) {
                     return PLANTS.filter(p => p.id === userPlantId);
                 }
                 
-                // Fallback: If no plant assigned in metadata, restrict to current selected or default
-                // But for now, if no metadata, let's allow all (or maybe default to just one to be safe)
-                // Given the requirement "Only admin sees all", non-admins without metadata is an edge case.
-                // Let's assume they should see all if they are legacy, or maybe just the one they are on.
                 return PLANTS; 
-            }, [session, isAdmin]);
+            }, [session, isAdmin, userProfile]);
 
             // Enforce Access Control: If current plant is not allowed, switch to allowed one
             useEffect(() => {
