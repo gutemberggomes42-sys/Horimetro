@@ -567,25 +567,27 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                 value={equipment.frota} 
                                 onChange={(e) => handleChange('frota', e.target.value)}
                                 onBlur={handleBlur}
-                                className="w-full h-full bg-transparent text-center text-white font-bold focus:outline-none placeholder-white/50 pr-12 text-base"
+                                className={`w-full h-full bg-transparent text-center text-white font-bold focus:outline-none placeholder-white/50 text-base ${isAppMode ? '' : 'pr-12'}`}
                                 placeholder="Frota"
                             />
-                            <div className="absolute right-0 top-0 h-full flex items-center pr-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                    onClick={() => onDelete(equipment.id)}
-                                    className="text-white hover:text-red-200 ml-1"
-                                    title="Excluir Frota"
-                                >
-                                    <Icons.X size={14} />
-                                </button>
-                                <button 
-                                    onClick={() => onTransfer(equipment.id)}
-                                    className="text-white hover:text-blue-200 ml-1"
-                                    title="Transferir para outra frente"
-                                >
-                                    <Icons.ArrowRight size={14} />
-                                </button>
-                            </div>
+                            {!isAppMode && (
+                                <div className="absolute right-0 top-0 h-full flex items-center pr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                        onClick={() => onDelete(equipment.id)}
+                                        className="text-white hover:text-red-200 ml-1"
+                                        title="Excluir Frota"
+                                    >
+                                        <Icons.X size={14} />
+                                    </button>
+                                    <button 
+                                        onClick={() => onTransfer(equipment.id)}
+                                        className="text-white hover:text-blue-200 ml-1"
+                                        title="Transferir para outra frente"
+                                    >
+                                        <Icons.ArrowRight size={14} />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </td>
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.initial, 'shiftA.initial', regressionError, regressionError ? `Valor menor que anterior (${lastReading.value} em ${lastReading.date.split('-').reverse().join('/')})` : "")}</td>
@@ -594,6 +596,26 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.maintenance, 'shiftA.maintenance')}</td>}
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.initial, 'shiftB.initial')}</td>
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.final, 'shiftB.final', shiftBError, "Hora Final menor que Inicial!")}</td>
+                    {isAppMode && (
+                        <td className="border-r border-gray-300 bg-gray-100 text-center">
+                             <div className="flex items-center justify-center space-x-2">
+                                <button 
+                                    onClick={() => onDelete(equipment.id)}
+                                    className="text-red-600 p-1"
+                                    title="Excluir Frota"
+                                >
+                                    <Icons.X size={16} />
+                                </button>
+                                <button 
+                                    onClick={() => onTransfer(equipment.id)}
+                                    className="text-blue-600 p-1"
+                                    title="Transferir"
+                                >
+                                    <Icons.ArrowRight size={16} />
+                                </button>
+                             </div>
+                        </td>
+                    )}
                     {!isAppMode && <td className={`border-r border-gray-400 font-bold text-center ${workedBHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedBHigh ? "Mais de 24h!" : ""}>{equipment.shiftB.worked.toFixed(1)}</td>}
                     {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.maintenance, 'shiftB.maintenance')}</td>}
                     {!isAppMode && <td className="border-r border-gray-400 bg-gray-200 font-bold text-center">{equipment.totalAB.toFixed(1)}</td>}
@@ -643,13 +665,14 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             <table className={`w-full border-collapse ${isAppMode ? '' : 'min-w-[800px]'}`}>
                                 <thead>
                                     <tr className={`${plant.solidBgClass} text-white text-xs`}>
-                                        <th className="border border-gray-400 p-1 w-28">Frota</th>
+                                        <th className="border border-gray-400 p-1 w-20">Frota</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Final</th>
                                         {!isAppMode && <th className="border border-gray-400 p-1 w-16">H.Trab.(A)</th>}
                                         {!isAppMode && <th className="border border-gray-400 p-1 w-16">Manut.(A)</th>}
                                         <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Final</th>
+                                        {isAppMode && <th className="border border-gray-400 p-1 w-20">Ações</th>}
                                         {!isAppMode && <th className="border border-gray-400 p-1 w-16">H.Trab.(B)</th>}
                                         {!isAppMode && <th className="border border-gray-400 p-1 w-16">Manut.(B)</th>}
                                         {!isAppMode && <th className="border border-gray-400 p-1 w-16">Total A-B</th>}
@@ -674,7 +697,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                             />
                                     ))}
                                     <tr className="bg-white">
-                                        <td colSpan={isAppMode ? 5 : 12} className="p-1 text-center border-t border-gray-300">
+                                        <td colSpan={isAppMode ? 6 : 12} className="p-1 text-center border-t border-gray-300">
                                             <button 
                                                 onClick={() => onAddEquipment(group.id)}
                                                 className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-4 rounded inline-flex items-center"
