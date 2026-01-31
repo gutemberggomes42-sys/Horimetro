@@ -2634,8 +2634,9 @@ on conflict (id) do nothing;`)}
                             const isUserAdmin = currentSession.user.email === 'gutemberggg10@gmail.com' || data.is_admin === true;
                             setIsAdmin(isUserAdmin);
                             
-                            // If user has a specific plant assigned and is NOT admin, force that plant
-                            if (data.plant_id && !isUserAdmin) {
+                            // If user has a specific plant assigned and is NOT admin/manager, force that plant
+                            const isManager = data.role === 'Gerente';
+                            if (data.plant_id && !isUserAdmin && !isManager) {
                                 setPlantId(data.plant_id);
                             }
                         } else {
@@ -2672,7 +2673,8 @@ on conflict (id) do nothing;`)}
             // Access Control: Determine which plants are visible to the current user
             const availablePlants = useMemo(() => {
                 if (!session) return PLANTS;
-                if (isAdmin) return PLANTS;
+                // Admins and Managers (Gerente) have full access
+                if (isAdmin || userProfile?.role === 'Gerente') return PLANTS;
                 
                 const userPlantId = userProfile?.plant_id || session.user?.user_metadata?.plant_id;
                 if (userPlantId) {
