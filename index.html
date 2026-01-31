@@ -561,29 +561,31 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             return (
                 <tr className={`text-sm border-b border-gray-300 ${isLast ? "" : "border-b"}`}>
                     <td className={`border-r border-gray-400 font-bold text-center relative group ${equipment.status === 'issue' ? 'bg-red-500 text-white' : `${plant.solidBgClass} text-white`}`}>
-                        <div className="flex items-center justify-between h-full px-1">
+                        <div className="relative w-full h-full">
                             <input 
                                 type="text" 
                                 value={equipment.frota} 
                                 onChange={(e) => handleChange('frota', e.target.value)}
                                 onBlur={handleBlur}
-                                className="w-full bg-transparent text-center text-white font-bold focus:outline-none placeholder-white/50"
+                                className="w-full h-full bg-transparent text-center text-white font-bold focus:outline-none placeholder-white/50 pr-12 text-base"
                                 placeholder="Frota"
                             />
-                            <button 
-                                onClick={() => onDelete(equipment.id)}
-                                className="opacity-0 group-hover:opacity-100 text-white hover:text-red-200 ml-1 transition-opacity"
-                                title="Excluir Frota"
-                            >
-                                <Icons.X size={14} />
-                            </button>
-                            <button 
-                                onClick={() => onTransfer(equipment.id)}
-                                className="opacity-0 group-hover:opacity-100 text-white hover:text-blue-200 ml-1 transition-opacity"
-                                title="Transferir para outra frente"
-                            >
-                                <Icons.ArrowRight size={14} />
-                            </button>
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                    onClick={() => onDelete(equipment.id)}
+                                    className="text-white hover:text-red-200 ml-1"
+                                    title="Excluir Frota"
+                                >
+                                    <Icons.X size={14} />
+                                </button>
+                                <button 
+                                    onClick={() => onTransfer(equipment.id)}
+                                    className="text-white hover:text-blue-200 ml-1"
+                                    title="Transferir para outra frente"
+                                >
+                                    <Icons.ArrowRight size={14} />
+                                </button>
+                            </div>
                         </div>
                     </td>
                     <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.initial, 'shiftA.initial', regressionError, regressionError ? `Valor menor que anterior (${lastReading.value} em ${lastReading.date.split('-').reverse().join('/')})` : "")}</td>
@@ -641,7 +643,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             <table className={`w-full border-collapse ${isAppMode ? '' : 'min-w-[800px]'}`}>
                                 <thead>
                                     <tr className={`${plant.solidBgClass} text-white text-xs`}>
-                                        <th className="border border-gray-400 p-1 w-20">Frota</th>
+                                        <th className="border border-gray-400 p-1 w-28">Frota</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>
                                         <th className="border border-gray-400 p-1 w-20">Hor.Final</th>
                                         {!isAppMode && <th className="border border-gray-400 p-1 w-16">H.Trab.(A)</th>}
