@@ -1297,11 +1297,15 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
 
                     {/* User Edit Modal */}
                     {editingUser && (
-                        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+                        <div className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
                                 <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
                                     <h3 className="font-bold text-lg">Editar Usuário</h3>
-                                    <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-gray-200 rounded-full">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setEditingUser(null)} 
+                                        className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                                    >
                                         <Icons.X size={20} />
                                     </button>
                                 </div>
@@ -2275,6 +2279,45 @@ alter table public.profiles add column if not exists is_admin boolean default fa
                                                         ))}
                                                     </tbody>
                                                 </table>
+                                                
+                                                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                                                    <div className="flex items-start gap-3">
+                                                        <Icons.Info size={20} className="text-blue-600 shrink-0 mt-0.5" />
+                                                        <div>
+                                                            <h4 className="font-bold text-blue-800 text-sm mb-1">Usuário não encontrado?</h4>
+                                                            <p className="text-sm text-blue-700 mb-2">
+                                                                Se algum e-mail cadastrado não estiver aparecendo nesta lista (como <strong>gutemberggg10@gmail.com</strong>), 
+                                                                é provável que ele tenha sido criado antes da ativação da sincronização automática.
+                                                            </p>
+                                                            <details className="group">
+                                                                <summary className="text-sm font-bold text-blue-800 cursor-pointer hover:underline list-none flex items-center gap-1">
+                                                                    <span>Ver Script de Correção (SQL)</span>
+                                                                    <svg className="w-4 h-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+                                                                </summary>
+                                                                <div className="mt-3">
+                                                                    <p className="text-xs text-blue-700 mb-2">Execute este comando no SQL Editor do Supabase para sincronizar todos os usuários:</p>
+                                                                    <div className="bg-gray-900 rounded p-3 relative">
+                                                                        <pre className="text-xs text-green-400 font-mono overflow-x-auto">
+{`insert into public.profiles (id, email, first_name, last_name, plant_id)
+select id, email, raw_user_meta_data->>'first_name', raw_user_meta_data->>'last_name', raw_user_meta_data->>'plant_id'
+from auth.users
+on conflict (id) do nothing;`}
+                                                                        </pre>
+                                                                        <button 
+                                                                            onClick={() => navigator.clipboard.writeText(`insert into public.profiles (id, email, first_name, last_name, plant_id)
+select id, email, raw_user_meta_data->>'first_name', raw_user_meta_data->>'last_name', raw_user_meta_data->>'plant_id'
+from auth.users
+on conflict (id) do nothing;`)}
+                                                                            className="absolute top-2 right-2 bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded text-[10px] font-bold"
+                                                                        >
+                                                                            Copiar
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </details>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
