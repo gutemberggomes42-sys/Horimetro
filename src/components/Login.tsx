@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { auth, googleProvider } from '../firebase';
 import { signInWithRedirect } from 'firebase/auth';
-import { Capacitor } from '@capacitor/core';
 
 export const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
