@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { auth, googleProvider } from '../firebase';
-import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
+import { signInWithRedirect } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 
 export const Login: React.FC = () => {
@@ -8,13 +8,8 @@ export const Login: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      if (Capacitor.isNativePlatform()) {
-        // On mobile, use redirect (requires SHA-1 config in Firebase Console)
-        await signInWithRedirect(auth, googleProvider);
-      } else {
-        // On web, popup is fine
-        await signInWithPopup(auth, googleProvider);
-      }
+      // Use signInWithRedirect for both Mobile and Web to avoid COOP/COEP issues on GitHub Pages
+      await signInWithRedirect(auth, googleProvider);
     } catch (err: any) {
       console.error("Login error:", err);
       setError("Erro ao fazer login com Google. Tente novamente.");
