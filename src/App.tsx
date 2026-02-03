@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { ReportData, EquipmentGroup, Equipment } from './types';
+import { ReportData } from './types';
 import { EquipmentGroupTable } from './components/EquipmentGroupTable';
 import { PLANTS, Plant } from './constants/plants';
-import { RotateCcw, Share2, Printer, Wifi, WifiOff, LogOut } from 'lucide-react';
+import { Wifi, WifiOff, LogOut } from 'lucide-react';
 import { reportService } from './services/reportService';
 import { auth } from './firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
@@ -128,28 +128,6 @@ function App() {
 
     return () => unsubscribe();
   }, [user]);
-
-  const handleShare = async () => {
-    if (!data) return;
-    
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Relatório Horímetro - ${selectedPlant.name}`,
-          text: `Relatório de horas trabalhadas - Data: ${data.date}`,
-          url: window.location.href,
-        });
-      } catch (error) {
-        console.log('Erro ao compartilhar', error);
-      }
-    } else {
-      window.print();
-    }
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
 
   const updateEquipment = (groupId: string, equipmentId: string, field: string, value: any) => {
     if (!data) return;

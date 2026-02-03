@@ -1,5 +1,5 @@
 import React from 'react';
-import { EquipmentGroup, Equipment } from '../types';
+import { EquipmentGroup } from '../types';
 import { EquipmentRow } from './EquipmentRow';
 import { EquipmentCardMobile } from './EquipmentCardMobile';
 
