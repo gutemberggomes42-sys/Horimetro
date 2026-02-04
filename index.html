@@ -1021,32 +1021,160 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     return;
                 }
 
-                let text = `*Usina ${plant.name}*\n`;
-                text += `*Frente ${data.id}*\n`;
+                // Generate Plain Text for WhatsApp
+                let plainText = `*Usina ${plant.name}*\n`;
+                plainText += `*Frente ${data.id}*\n\n`;
 
                 report.groups.forEach(group => {
                     if (!group.items || group.items.length === 0) return;
                     
-                    text += `*${group.name}*\n`;
+                    plainText += `*${group.name}*\n`;
                     
                     group.items.forEach(item => {
                         const statusIcon = item.status === 'ok' ? '✅' : '❌';
                         if (item.status === 'ok') {
-                            text += `${statusIcon}${item.frota}\n`;
+                            plainText += `${statusIcon} ${item.frota}\n`;
                         } else {
                             const obs = item.obs ? item.obs : 'motivo de parada';
-                            text += `${statusIcon}${item.frota}->${obs}\n`;
+                            plainText += `${statusIcon} ${item.frota} -> ${obs.toUpperCase()}\n`;
                         }
                     });
-                    text += '\n';
+                    plainText += '\n';
                 });
 
-                navigator.clipboard.writeText(text).then(() => {
-                    alert("Relatório copiado para a área de transferência!");
-                }).catch(err => {
-                    console.error('Erro ao copiar:', err);
-                    alert("Erro ao copiar. Verifique as permissões do navegador.");
+                // Prepare HTML content for Word/Excel
+                let htmlContent = `
+                    <table style="border-collapse: collapse; font-family: 'Segoe UI', 'Calibri', Arial, sans-serif; width: 700px; border: 1px solid #ddd; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
+                        <!-- Header Principal -->
+                        <tr>
+                            <td rowspan="${report.groups.reduce((acc, g) => acc + (g.items?.length > 0 ? 1 : 0), 0) + 2}" style="background-color: #2E7D32; color: white; font-weight: bold; text-align: center; vertical-align: middle; width: 40px; border-bottom: 1px solid #1B5E20; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 14px; letter-spacing: 2px;">
+                                <span style="display: inline-block; transform: rotate(90deg); white-space: nowrap;">USINA ${plant.name.toUpperCase()}</span>
+                            </td>
+                            <td colspan="3" style="border-bottom: 2px solid #2E7D32; text-align: left; padding: 15px; background-color: #f8f9fa;">
+                                <div style="color: #2E7D32; font-size: 20px; font-weight: bold; margin-bottom: 5px;">EQUIPAMENTOS DE COLHEITA</div>
+                                <div style="color: #666; font-size: 14px;">FAZ. ${data.id} &bull; ${selectedDate.split('-').reverse().join('/')}</div>
+                            </td>
+                        </tr>
+                `;
+
+                report.groups.forEach((group, index) => {
+                    if (!group.items || group.items.length === 0) return;
+
+                    const total = group.items.length;
+                    const active = group.items.filter(i => i.status === 'ok').length;
+                    const stopped = total - active;
+                    const activePct = total > 0 ? Math.round((active / total) * 100) : 0;
+                    const stoppedPct = total > 0 ? Math.round((stopped / total) * 100) : 0;
+                    
+                    // QuickChart URL (Doughnut Chart Modern)
+                    const chartConfig = {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Parado', 'Ativo'],
+                            datasets: [{
+                                data: [stopped, active],
+                                backgroundColor: ['#E53935', '#43A047'],
+                                borderWidth: 0
+                            }]
+                        },
+                        options: {
+                            cutoutPercentage: 60,
+                            plugins: {
+                                legend: { display: false },
+                                datalabels: {
+                                    display: true,
+                                    color: '#333',
+                                    font: { weight: 'bold', size: 16 },
+                                    formatter: (val) => {
+                                        if (total === 0) return '';
+                                        const pct = Math.round((val / total) * 100);
+                                        return pct > 0 ? pct + '%' : '';
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&w=120&h=120`;
+
+                    htmlContent += `
+                        <tr>
+                            <!-- Nome do Grupo -->
+                            <td style="background-color: ${index % 2 === 0 ? '#FFFFFF' : '#F9F9F9'}; vertical-align: middle; padding: 10px; border-bottom: 1px solid #eee; width: 140px; text-align: center;">
+                                <div style="font-weight: bold; color: #333; font-size: 13px; border-left: 4px solid #2E7D32; padding-left: 8px;">
+                                    ${group.name.toUpperCase()}
+                                </div>
+                            </td>
+                            
+                            <!-- Lista de Equipamentos -->
+                            <td style="vertical-align: top; padding: 8px; border-bottom: 1px solid #eee; background-color: ${index % 2 === 0 ? '#FFFFFF' : '#F9F9F9'};">
+                                <table style="width: 100%; border-collapse: collapse; border: none;">
+                    `;
+
+                    group.items.forEach(item => {
+                        const isIssue = item.status !== 'ok';
+                        const statusLabel = isIssue ? '❌' : '✅';
+                        const obs = item.obs || '';
+                        
+                        htmlContent += `
+                                    <tr>
+                                        <!-- Frota -->
+                                        <td style="font-weight: bold; padding: 3px; width: 60px; border: none; color: #333; font-size: 12px; white-space: nowrap;">
+                                            ${item.frota}
+                                        </td>
+                                        
+                                        <!-- Status Icon -->
+                                        <td style="padding: 3px; width: 30px; border: none; text-align: center;">
+                                            <span style="font-size: 14px;">${statusLabel}</span>
+                                        </td>
+                                        
+                                        <!-- Motivo (Obs) -->
+                                        <td style="padding: 3px; font-size: 11px; border: none; color: #666; width: auto; text-align: left;">
+                                            ${obs.toUpperCase()}
+                                        </td>
+                                    </tr>
+                        `;
+                    });
+
+                    htmlContent += `
+                                </table>
+                            </td>
+                            
+                            <!-- Gráfico -->
+                            <td style="vertical-align: middle; text-align: center; border-bottom: 1px solid #eee; width: 130px; background-color: ${index % 2 === 0 ? '#FFFFFF' : '#F9F9F9'};">
+                                <img src="${chartUrl}" alt="Gráfico" width="90" height="90" style="max-width: 90px;" />
+                                <div style="font-size: 9px; color: #999; margin-top: 5px; text-align: center;">Disponibilidade</div>
+                                <div style="font-size: 10px; font-weight: bold; color: #43A047; margin-top: 2px; text-align: center;">Ativos: ${activePct}%</div>
+                                <div style="font-size: 10px; font-weight: bold; color: #E53935; text-align: center;">Parados: ${stoppedPct}%</div>
+                            </td>
+                        </tr>
+                    `;
                 });
+
+                htmlContent += `</table>`;
+
+                const fullHtml = `
+                    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+                    <head><meta charset='utf-8'><title>Relatório</title></head>
+                    <body>${htmlContent}</body>
+                    </html>
+                `;
+
+                try {
+                    const blobHtml = new Blob([fullHtml], { type: 'text/html' });
+                    const blobText = new Blob([plainText], { type: 'text/plain' });
+                    
+                    navigator.clipboard.write([
+                        new ClipboardItem({
+                            'text/html': blobHtml,
+                            'text/plain': blobText
+                        })
+                    ]).then(() => {
+                        alert("Relatório copiado! \n- Cole no Word para ver Tabela/Gráfico.\n- Cole no WhatsApp para ver texto formatado.");
+                    });
+                } catch (err) {
+                    console.error("Erro ao copiar HTML:", err);
+                    alert("Erro ao copiar. Seu navegador pode não suportar cópia de HTML direto.");
+                }
             };
 
             const generateWordReport = () => {
@@ -1548,10 +1676,10 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             <button
                                 onClick={copyWhatsAppReport}
                                 className="text-xs px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700 font-bold flex items-center"
-                                title="Copiar Relatório WhatsApp"
+                                title="Copiar Relatório para Word"
                             >
                                 <Icons.Copy size={14} className="mr-1" />
-                                WhatsApp
+                                Relatório Word
                             </button>
                             <button
                                 onClick={generateWordReport}
