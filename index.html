@@ -268,23 +268,51 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             ),
             Info: ({ size = 24, className = "" }) => (
                 <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            ),
+            Refresh: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+            ),
+            AlertTriangle: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            ),
+            Lock: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
             )
         };
 
         // --- Notification Component ---
         const ToastNotification = ({ message, type, onClose }) => {
             useEffect(() => {
-                const timer = setTimeout(onClose, 3000);
+                const duration = type === 'info' ? 2000 : 4000;
+                const timer = setTimeout(onClose, duration);
                 return () => clearTimeout(timer);
-            }, [onClose]);
+            }, [onClose, type]);
+
+            let bgClass = 'bg-red-600 text-white';
+            let icon = <Icons.X size={24} />;
+            let title = 'Erro';
+
+            if (type === 'success') {
+                bgClass = 'bg-green-600 text-white';
+                icon = <Icons.Check size={24} />;
+                title = 'Sucesso';
+            } else if (type === 'info') {
+                bgClass = 'bg-blue-600 text-white';
+                icon = <Icons.Info size={24} />;
+                title = 'Informação';
+            } else if (type === 'warning') {
+                bgClass = 'bg-yellow-600 text-white';
+                icon = <Icons.AlertTriangle size={24} />;
+                title = 'Atenção';
+            }
 
             return (
-                <div className={`fixed bottom-5 right-5 px-6 py-4 rounded-lg shadow-2xl flex items-center space-x-3 transition-all transform duration-500 z-[100] ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                <div className={`fixed bottom-5 right-5 px-6 py-4 rounded-lg shadow-2xl flex items-center space-x-3 transition-all transform duration-500 z-[100] ${bgClass}`}>
                     <div className="font-bold text-lg">
-                        {type === 'success' ? <Icons.Check size={24} /> : <Icons.X size={24} />}
+                        {icon}
                     </div>
                     <div>
-                        <h4 className="font-bold text-lg">{type === 'success' ? 'Registrado!' : 'Erro'}</h4>
+                        <h4 className="font-bold text-lg">{title}</h4>
                         <p className="text-sm font-medium opacity-90">{message}</p>
                     </div>
                     <button onClick={onClose} className="ml-4 hover:bg-white/20 rounded-full p-1 transition-colors">
@@ -446,12 +474,33 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
         };
 
         const createReportFromDb = async (frenteId, dateStr, plantId) => {
-             const baseData = createInitialData(frenteId, dateStr, plantId);
-             
+             let frentesTable = 'frentes_cambui';
              let tableName = 'equipments_cambui';
-             if (plantId === 'panorama') tableName = 'equipments_panorama';
-             else if (plantId === 'vale-verdao') tableName = 'equipments_vale_verdao';
-             else if (plantId === 'floresta') tableName = 'equipments_floresta';
+             
+             if (plantId === 'panorama') {
+                 frentesTable = 'frentes_panorama';
+                 tableName = 'equipments_panorama';
+             } else if (plantId === 'vale-verdao') {
+                 frentesTable = 'frentes_vale_verdao';
+                 tableName = 'equipments_vale_verdao';
+             } else if (plantId === 'floresta') {
+                 frentesTable = 'frentes_floresta';
+                 tableName = 'equipments_floresta';
+             }
+
+             // Fetch Frente Type to ensure correct template
+             let frenteType = 'plantadora'; 
+             const { data: frenteData } = await supabaseClient
+                 .from(frentesTable)
+                 .select('type')
+                 .eq('name', frenteId)
+                 .single();
+             
+             if (frenteData && frenteData.type) {
+                 frenteType = frenteData.type;
+             }
+
+             const baseData = createInitialData(frenteId, dateStr, plantId, frenteType);
 
              // Fetch equipments filtered by frente
              const { data, error } = await supabaseClient
@@ -495,12 +544,47 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
              });
 
              const newGroups = Object.values(groupsMap).map(g => {
-                 const baseGroup = baseData.groups.find(bg => bg.name === g.name);
+                 const baseGroup = baseData.groups.find(bg => bg.name.toLowerCase() === g.name.toLowerCase());
                  return {
                      ...g,
                      yield: baseGroup ? baseGroup.yield : 0,
                      yieldLabel: baseGroup ? baseGroup.yieldLabel : 'Produção'
                  };
+             }).sort((a, b) => {
+                 // Priority based on User Rules (Labels)
+                 const getPriority = (label) => {
+                     if (!label) return 99;
+                     const l = label.toLowerCase();
+                     if (l.includes('rendimento plantio turno "a"')) return 1;
+                     if (l.includes('rendimento plantio turno "b"')) return 2;
+                     if (l.includes('velocidade trabalhada')) return 3;
+                     return 99;
+                 };
+                 
+                 const pA = getPriority(a.yieldLabel);
+                 const pB = getPriority(b.yieldLabel);
+                 
+                 if (pA !== pB) return pA - pB;
+                 
+                 // Secondary Sort: Predefined Group Names
+                 const sortOrder = [
+                     'Colhedoras', 
+                     'Trator Sulcador', 
+                     'Trator Distribuidor', 
+                     'Trator Cobridor',
+                     'Trator Transbordo', 
+                     'Trator Plantadora', 
+                     'Caminhão'
+                 ];
+                 
+                 const indexA = sortOrder.indexOf(a.name);
+                 const indexB = sortOrder.indexOf(b.name);
+                 
+                 if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                 if (indexA !== -1) return -1;
+                 if (indexB !== -1) return 1;
+                 
+                 return a.name.localeCompare(b.name);
              });
 
              return {
@@ -2340,15 +2424,32 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                     <th className="px-6 py-3 border-b">Frente</th>
                                                     <th className="px-6 py-3 border-b">Turno A</th>
                                                     <th className="px-6 py-3 border-b">Turno B</th>
+                                                    <th className="px-6 py-3 border-b">Editor</th>
                                                     <th className="px-6 py-3 border-b text-right">Ações</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
                                                 {filteredHistory.map((row, idx) => {
                                                     const report = row.report_data || {};
-                                                    const totalA = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursA) || 0), 0);
-                                                    const totalB = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursB) || 0), 0);
+                                                    
+                                                    // Calculate totals supporting both old (frotas) and new (groups) structures
+                                                    let totalA = 0;
+                                                    let totalB = 0;
+
+                                                    if (report.frotas) {
+                                                        totalA = report.frotas.reduce((acc, f) => acc + (parseFloat(f.workedHoursA) || 0), 0);
+                                                        totalB = report.frotas.reduce((acc, f) => acc + (parseFloat(f.workedHoursB) || 0), 0);
+                                                    } else if (report.groups) {
+                                                        report.groups.forEach(group => {
+                                                            group.items.forEach(item => {
+                                                                totalA += parseFloat(item.shiftA?.worked || 0);
+                                                                totalB += parseFloat(item.shiftB?.worked || 0);
+                                                            });
+                                                        });
+                                                    }
+
                                                     const isSelected = selectedIds.has(row.id);
+                                                    const editor = row.last_editor || report.last_editor || '-';
                                                     
                                                     return (
                                                         <tr key={row.id || idx} className={`hover:bg-gray-50 transition-colors group ${isSelected ? 'bg-orange-50' : ''}`}>
@@ -2364,6 +2465,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                             <td className="px-6 py-4">{row.frente_id}</td>
                                                             <td className="px-6 py-4">{totalA.toFixed(1)}h</td>
                                                             <td className="px-6 py-4">{totalB.toFixed(1)}h</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-500 max-w-[150px] truncate" title={editor}>{editor}</td>
                                                             <td className="px-6 py-4 flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                 <button 
                                                                     onClick={() => setSelectedReport(row)}
@@ -2902,10 +3004,18 @@ on conflict (id) do nothing;`)}
             }
         ];
 
-        const MobileHome = ({ history, onNewLaunch, onEditLaunch }) => (
+        const MobileHome = ({ history, onNewLaunch, onEditLaunch, onRefresh }) => (
             <div className="min-h-screen bg-gray-100 pb-20">
-                <div className="bg-gray-800 text-white p-4 shadow-lg sticky top-0 z-10">
+                <div className="bg-gray-800 text-white p-4 shadow-lg sticky top-0 z-10 flex justify-between items-center">
+                    <div className="w-8"></div>
                     <h1 className="text-xl font-bold text-center">Histórico de Lançamentos</h1>
+                    <button 
+                        onClick={onRefresh} 
+                        className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-colors shadow-sm active:scale-95"
+                        title="Atualizar Dados"
+                    >
+                        <Icons.Refresh size={20} />
+                    </button>
                 </div>
                 
                 <div className="p-4 space-y-4">
@@ -2934,14 +3044,24 @@ on conflict (id) do nothing;`)}
                                                 {new Date(item.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                                             </div>
                                         </div>
-                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                            item.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                        }`}>
-                                            {item.status === 'completed' ? 'Concluído' : 'Pendente'}
-                                        </span>
+                                        <div className="flex items-center space-x-2">
+                                            {item.status === 'completed' && <Icons.Lock size={16} className="text-gray-500" />}
+                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                                item.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                            }`}>
+                                                {item.status === 'completed' ? 'Concluído' : 'Pendente'}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div className="text-xs text-gray-400">
-                                        Última edição: {item.lastEditor}
+                                    <div className="flex justify-between items-end mt-2">
+                                        <div className="text-xs text-gray-400 flex items-center gap-1">
+                                            <Icons.Users size={12} />
+                                            <span>{item.lastEditor}</span>
+                                        </div>
+                                        <div className="flex space-x-1">
+                                            {item.shifts?.A && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">TA</span>}
+                                            {item.shifts?.B && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">TB</span>}
+                                        </div>
                                     </div>
                                 </div>
                             ))
@@ -3239,11 +3359,11 @@ on conflict (id) do nothing;`)}
 
             const predefinedGroups = [
                 'Colhedoras', 
-                'Trator Transbordo', 
-                'Trator Plantadora', 
                 'Trator Sulcador', 
                 'Trator Distribuidor', 
                 'Trator Cobridor',
+                'Trator Transbordo', 
+                'Trator Plantadora', 
                 'Caminhão'
             ];
 
@@ -3727,6 +3847,7 @@ on conflict (id) do nothing;`)}
             const handleSave = async () => {
                 if (!allData[activeFrenteId]) return;
                 setIsSaving(true);
+                setNotification({ message: 'Sincronizando com o banco de dados...', type: 'info' });
                 
                 const currentUser = session?.user?.email || 'Desconhecido';
 
@@ -3769,13 +3890,13 @@ on conflict (id) do nothing;`)}
                         if (error.code === '42P01' || error.message.includes('relation') || error.message.includes('does not exist')) {
                             setShowSql(true);
                         }
-                        setNotification({ message: 'Erro ao salvar os dados! Verifique a conexão ou tabela.', type: 'error' });
+                        setNotification({ message: 'Salvo localmente. Pendente para subir pro banco de dados', type: 'warning' });
                     } else {
-                        setNotification({ message: 'Dados salvos no banco de dados!', type: 'success' });
+                        setNotification({ message: 'Salvo com sucesso e sincronizado com o banco de dados', type: 'success' });
                     }
                 } catch (err) {
                     console.error("Save Connection Error:", err);
-                    setNotification({ message: 'Erro de conexão ao salvar.', type: 'error' });
+                    setNotification({ message: 'Salvo localmente. Pendente para subir pro banco de dados', type: 'warning' });
                 }
                 setIsSaving(false);
             };
@@ -3902,12 +4023,17 @@ on conflict (id) do nothing;`)}
                 const list = [];
                 Object.entries(allData).forEach(([fId, dates]) => {
                     Object.entries(dates).forEach(([date, data]) => {
+                        // Check shifts
+                        const hasShiftA = data.groups?.some(g => g.items?.some(i => i.shiftA.worked > 0 || i.shiftA.initial !== null || i.shiftA.final !== null));
+                        const hasShiftB = data.groups?.some(g => g.items?.some(i => i.shiftB.worked > 0 || i.shiftB.initial !== null || i.shiftB.final !== null));
+
                         list.push({
                             frenteId: fId,
                             date,
                             status: data.status || 'pending',
                             updatedAt: data.updatedAt, // if available
-                            lastEditor: data.last_editor || data.concluded_by || '-'
+                            lastEditor: data.last_editor || data.concluded_by || '-',
+                            shifts: { A: hasShiftA, B: hasShiftB }
                         });
                     });
                 });
@@ -3928,40 +4054,64 @@ on conflict (id) do nothing;`)}
             };
 
             const recalculateSpeed = (groups) => {
-                const isF4002 = groups.some(g => g.id === 'tortao' || g.id === 'sulcador');
                 let yieldA = 0;
                 let yieldB = 0;
-                let targetGroupId = null;
+                let targetGroupIndex = -1;
 
-                if (isF4002) {
-                    const groupA = groups.find(g => g.id === 'colhedoras');
-                    const groupB = groups.find(g => g.id === 'tortao' || g.id === 'sulcador');
-                    targetGroupId = 'distribuidor';
-                    yieldA = groupA ? (parseFloat(groupA.yield) || 0) : 0;
-                    yieldB = groupB ? (parseFloat(groupB.yield) || 0) : 0;
-                } else {
-                    const groupA = groups.find(g => g.id === 'colhedoras');
-                    const groupB = groups.find(g => g.id === 'transbordo');
-                    targetGroupId = 'plantadora';
-                    yieldA = groupA ? (parseFloat(groupA.yield) || 0) : 0;
-                    yieldB = groupB ? (parseFloat(groupB.yield) || 0) : 0;
+                // Identify groups by Label (Universal Logic) with fallback to Name/ID
+                groups.forEach((g, index) => {
+                    const label = (g.yieldLabel || '').toLowerCase();
+                    const name = (g.name || '').toLowerCase();
+                    const id = (g.id || '').toLowerCase();
+                    const y = parseFloat(g.yield) || 0;
+
+                    const isLabelA = label.includes('rendimento') && label.includes('turno') && (label.includes('"a"') || label.includes("'a'") || label.includes(' a'));
+                    const isLabelB = label.includes('rendimento') && label.includes('turno') && (label.includes('"b"') || label.includes("'b'") || label.includes(' b'));
+                    const isLabelSpeed = label.includes('velocidade');
+
+                    // Fallback logic if labels are generic 'produção' or missing
+                    const isNameA = name.includes('colhedora');
+                    const isNameB = name.includes('transbordo') || name.includes('sulcador');
+                    const isNameSpeed = name.includes('plantadora') || name.includes('distribuidor');
+
+                    if (isLabelA || (!isLabelB && !isLabelSpeed && isNameA)) {
+                        yieldA = y;
+                    } else if (isLabelB || (!isLabelA && !isLabelSpeed && isNameB)) {
+                        yieldB = y;
+                    } else if (isLabelSpeed || (!isLabelA && !isLabelB && isNameSpeed)) {
+                        targetGroupIndex = index;
+                    }
+                });
+
+                if (targetGroupIndex === -1) return groups;
+
+                const targetGroup = groups[targetGroupIndex];
+                const totalHours = targetGroup.items.reduce((acc, item) => acc + (item.totalAB || 0), 0);
+                
+                let speed = 0;
+                if (totalHours > 0) {
+                    // Formula: ((YieldA + YieldB) * 6666 / TotalHours / 1000) (Gross Speed)
+                    // 6666 is the factor for 1.5m spacing (10000/1.5)
+                    speed = ((yieldA + yieldB) * 6666) / totalHours / 1000;
                 }
 
-                return groups.map(group => {
-                    if (group.id !== targetGroupId) return group;
-                    
-                    const totalHours = group.items.reduce((acc, item) => acc + (item.totalAB || 0), 0);
-                    let speed = 0;
-                    if (totalHours > 0) {
-                        // Formula: ((YieldA + YieldB) * 6666 / TotalHours / 1000) - 30%
-                        const raw = ((yieldA + yieldB) * 6666) / totalHours / 1000;
-                        speed = raw * 0.7; // -30%
-                    }
-                    return { ...group, yield: parseFloat(speed.toFixed(2)) };
-                });
+                const newGroups = [...groups];
+                newGroups[targetGroupIndex] = {
+                    ...targetGroup,
+                    yield: parseFloat(speed.toFixed(2))
+                };
+                
+                return newGroups;
             };
 
             const updateEquipment = (groupId, equipmentId, field, value) => {
+                // Security Check: Prevent editing completed reports if not admin
+                const currentReportCheck = allData[activeFrenteId]?.[selectedDate];
+                if (currentReportCheck?.status === 'completed' && !isAdmin) {
+                     setNotification({ message: 'Lançamento concluído não pode ser editado.', type: 'warning' });
+                     return;
+                }
+
                 setAllData(prev => {
                     const currentFrente = prev[activeFrenteId] || {};
                     const currentReport = currentFrente[selectedDate];
@@ -4170,6 +4320,13 @@ on conflict (id) do nothing;`)}
             };
 
             const deleteEquipment = (groupId, equipmentId) => {
+                 // Security Check: Prevent deleting from completed reports if not admin
+                 const currentReportCheck = allData[activeFrenteId]?.[selectedDate];
+                 if (currentReportCheck?.status === 'completed' && !isAdmin) {
+                      setNotification({ message: 'Lançamento concluído não pode ser editado.', type: 'warning' });
+                      return;
+                 }
+
                  if(!confirm("Tem certeza que deseja remover esta frota?")) return;
                  setAllData(prev => {
                     const currentFrente = prev[activeFrenteId] || {};
@@ -4201,6 +4358,21 @@ on conflict (id) do nothing;`)}
                  
                  const { groupId, equipmentId } = transferData;
                  const sourceFrenteId = activeFrenteId;
+
+                 // Security Check: Prevent transfer if source or target is completed (unless admin)
+                 const sourceReportCheck = allData[sourceFrenteId]?.[selectedDate];
+                 const targetReportCheck = allData[targetFrenteId]?.[selectedDate];
+                 
+                 if (!isAdmin) {
+                     if (sourceReportCheck?.status === 'completed') {
+                         setNotification({ message: 'Origem concluída. Transferência bloqueada.', type: 'warning' });
+                         return;
+                     }
+                     if (targetReportCheck?.status === 'completed') {
+                         setNotification({ message: 'Destino concluído. Transferência bloqueada.', type: 'warning' });
+                         return;
+                     }
+                 }
                  
                  setAllData(prev => {
                     const sourceReport = prev[sourceFrenteId]?.[selectedDate];
@@ -4314,6 +4486,12 @@ on conflict (id) do nothing;`)}
             };
 
             const deleteFrente = async () => {
+                // Security Check: Only admins can delete Frentes
+                if (!isAdmin) {
+                    setNotification({ message: 'Apenas administradores podem excluir frentes.', type: 'warning' });
+                    return;
+                }
+
                 // Allow deleting the last frente (remove restriction)
                 if (confirm(`Tem certeza que deseja excluir a ${activeFrenteId}?`)) {
                     // Delete from Supabase Reports
@@ -4358,6 +4536,11 @@ on conflict (id) do nothing;`)}
             };
 
             const handleEditHistory = (frenteId, date) => {
+                const report = allData[frenteId]?.[date];
+                if (report?.status === 'completed' && !isAdmin) {
+                    setNotification({ message: 'Lançamento concluído não pode ser editado.', type: 'warning' });
+                    return;
+                }
                 setActiveFrenteId(frenteId);
                 setSelectedDate(date);
                 setEntryMode('form');
@@ -4491,6 +4674,11 @@ on conflict (id) do nothing;`)}
             };
 
             const handleMobileEditLaunch = (item) => {
+                const report = allData[item.frenteId]?.[item.date];
+                if (report?.status === 'completed' && !isAdmin) {
+                    setNotification({ message: 'Lançamento concluído não pode ser editado por usuários não administradores.', type: 'warning' });
+                    return;
+                }
                 setActiveFrenteId(item.frenteId);
                 setSelectedDate(item.date);
                 setMobileView('shift');
@@ -4524,71 +4712,92 @@ on conflict (id) do nothing;`)}
 
             // Mobile App Flow
             if (isAppMode) {
+                let mobileContent;
                 if (mobileView === 'shift') {
-                    return <MobileShiftSelector onSelectShift={handleMobileSelectShift} onBack={handleMobileBack} />;
-                }
-                if (mobileView === 'input') {
-                    if (!currentData) return <div className="p-4 text-center">Carregando dados...</div>;
-                    return <MobileInputList 
-                        groups={currentData.groups} 
-                        shift={mobileShift} 
-                        onUpdate={(groupId, itemId, field, value) => {
-                             const val = value === '' ? null : parseFloat(value);
-                             
-                             // Mobile Validation with Sound and Alert
-                             if (val !== null) {
-                                 const group = currentData.groups.find(g => g.id === groupId);
-                                 const item = group ? group.items.find(i => i.id === itemId) : null;
+                    mobileContent = <MobileShiftSelector onSelectShift={handleMobileSelectShift} onBack={handleMobileBack} />;
+                } else if (mobileView === 'input') {
+                    if (!currentData) {
+                        mobileContent = <div className="p-4 text-center">Carregando dados...</div>;
+                    } else {
+                        mobileContent = <MobileInputList 
+                            groups={currentData.groups} 
+                            shift={mobileShift} 
+                            onUpdate={(groupId, itemId, field, value) => {
+                                 const val = value === '' ? null : parseFloat(value);
                                  
-                                 if (item && item.frota) {
-                                     // 1. Check against Previous Reading
-                                     const prevReading = lastReadings[item.frota]?.value;
-                                     if (prevReading !== undefined && prevReading !== null) {
-                                         if (val < prevReading) {
-                                             playErrorSound();
-                                             alert(`ATENÇÃO: Valor inválido!\nO horímetro (${val}) não pode ser menor que o fechamento anterior (${prevReading}).`);
-                                             return;
-                                         }
-                                     }
-
-                                     // 2. Check Consistency (Final >= Initial)
-                                     const parts = field.split('.');
-                                     if (parts.length === 2) {
-                                         const shiftName = parts[0]; 
-                                         const type = parts[1];
-                                         
-                                         if (type === 'final') {
-                                             const currentInitial = item[shiftName].initial;
-                                             if (currentInitial !== null && val < currentInitial) {
+                                 // Mobile Validation with Sound and Alert
+                                 if (val !== null) {
+                                     const group = currentData.groups.find(g => g.id === groupId);
+                                     const item = group ? group.items.find(i => i.id === itemId) : null;
+                                     
+                                     if (item && item.frota) {
+                                         // 1. Check against Previous Reading
+                                         const prevReading = lastReadings[item.frota]?.value;
+                                         if (prevReading !== undefined && prevReading !== null) {
+                                             if (val < prevReading) {
                                                  playErrorSound();
-                                                 alert(`ATENÇÃO: Valor inválido!\nO horímetro final (${val}) não pode ser menor que o inicial (${currentInitial}).`);
+                                                 alert(`ATENÇÃO: Valor inválido!\nO horímetro (${val}) não pode ser menor que o fechamento anterior (${prevReading}).`);
                                                  return;
                                              }
-                                         } else if (type === 'initial') {
-                                             const currentFinal = item[shiftName].final;
-                                             if (currentFinal !== null && val > currentFinal) {
-                                                 playErrorSound();
-                                                 alert(`ATENÇÃO: Valor inválido!\nO horímetro inicial (${val}) não pode ser maior que o final (${currentFinal}).`);
-                                                 return;
+                                         }
+
+                                         // 2. Check Consistency (Final >= Initial)
+                                         const parts = field.split('.');
+                                         if (parts.length === 2) {
+                                             const shiftName = parts[0]; 
+                                             const type = parts[1];
+                                             
+                                             if (type === 'final') {
+                                                 const currentInitial = item[shiftName].initial;
+                                                 if (currentInitial !== null && val < currentInitial) {
+                                                     playErrorSound();
+                                                     alert(`ATENÇÃO: Valor inválido!\nO horímetro final (${val}) não pode ser menor que o inicial (${currentInitial}).`);
+                                                     return;
+                                                 }
+                                             } else if (type === 'initial') {
+                                                 const currentFinal = item[shiftName].final;
+                                                 if (currentFinal !== null && val > currentFinal) {
+                                                     playErrorSound();
+                                                     alert(`ATENÇÃO: Valor inválido!\nO horímetro inicial (${val}) não pode ser maior que o final (${currentFinal}).`);
+                                                     return;
+                                                 }
                                              }
                                          }
                                      }
                                  }
-                             }
 
-                             updateEquipment(groupId, itemId, field, val);
-                        }} 
-                        onBack={handleMobileBack} 
-                        onSave={handleSave} 
-                        isSaving={isSaving} 
+                                 updateEquipment(groupId, itemId, field, val);
+                            }} 
+                            onBack={handleMobileBack} 
+                            onSave={handleSave} 
+                            isSaving={isSaving} 
+                        />;
+                    }
+                } else {
+                    // Default to home
+                    mobileContent = <MobileHome 
+                        history={historyList} 
+                        onNewLaunch={handleMobileNewLaunch} 
+                        onEditLaunch={handleMobileEditLaunch} 
+                        onRefresh={() => {
+                            setRefreshTrigger(prev => prev + 1);
+                            setNotification({ message: 'Atualizando dados...', type: 'success' });
+                        }}
                     />;
                 }
-                // Default to home
-                return <MobileHome 
-                    history={historyList} 
-                    onNewLaunch={handleMobileNewLaunch} 
-                    onEditLaunch={handleMobileEditLaunch} 
-                />;
+
+                return (
+                    <div className="min-h-screen bg-gray-100 font-sans">
+                        {notification && (
+                            <ToastNotification 
+                                message={notification.message} 
+                                type={notification.type} 
+                                onClose={() => setNotification(null)} 
+                            />
+                        )}
+                        {mobileContent}
+                    </div>
+                );
             }
 
             return (
