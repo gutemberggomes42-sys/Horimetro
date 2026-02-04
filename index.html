@@ -445,6 +445,70 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
              return base;
         };
 
+        const createReportFromDb = async (frenteId, dateStr, plantId) => {
+             const baseData = createInitialData(frenteId, dateStr, plantId);
+             
+             let tableName = 'equipments_cambui';
+             if (plantId === 'panorama') tableName = 'equipments_panorama';
+             else if (plantId === 'vale-verdao') tableName = 'equipments_vale_verdao';
+             else if (plantId === 'floresta') tableName = 'equipments_floresta';
+
+             // Fetch equipments filtered by frente
+             const { data, error } = await supabaseClient
+                .from(tableName)
+                .select('*')
+                .eq('frente', frenteId) // Filter by Frente
+                .order('group_name', { ascending: true })
+                .order('frota', { ascending: true });
+
+             if (error) {
+                 console.error("Error creating report from DB:", error);
+                 if (error.code === '42703') {
+                     alert("ATENÇÃO: A coluna 'frente' não existe no banco de dados. Os equipamentos padrão serão carregados. Por favor, vá em Admin > Instruções SQL e execute a atualização.");
+                 }
+                 return baseData;
+             }
+
+             if (!data || data.length === 0) {
+                 return baseData;
+             }
+
+             const groupsMap = {};
+             data.forEach(item => {
+                 const gName = item.group_name;
+                 if (!groupsMap[gName]) {
+                     groupsMap[gName] = {
+                         id: gName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+                         name: gName,
+                         items: []
+                     };
+                 }
+                 groupsMap[gName].items.push({
+                     id: item.id ? item.id.toString() : Math.random().toString(36).substr(2, 9),
+                     frota: item.frota,
+                     shiftA: { initial: null, final: null, worked: 0, maintenance: 0 },
+                     shiftB: { initial: null, final: null, worked: 0, maintenance: 0 },
+                     totalAB: 0,
+                     status: 'ok',
+                     obs: ''
+                 });
+             });
+
+             const newGroups = Object.values(groupsMap).map(g => {
+                 const baseGroup = baseData.groups.find(bg => bg.name === g.name);
+                 return {
+                     ...g,
+                     yield: baseGroup ? baseGroup.yield : 0,
+                     yieldLabel: baseGroup ? baseGroup.yieldLabel : 'Produção'
+                 };
+             });
+
+             return {
+                 ...baseData,
+                 groups: newGroups
+             };
+        };
+
         // --- Components ---
 
         // --- Transfer Modal Component ---
@@ -2518,6 +2582,12 @@ alter table public.profiles add column if not exists is_admin boolean default fa
 -- 3. Habilita segurança (RLS)
 alter table public.profiles enable row level security;
 
+-- 4. Adiciona coluna 'frente' nas tabelas de equipamentos (NOVO)
+alter table public.equipments_cambui add column if not exists frente text default 'F4001';
+alter table public.equipments_panorama add column if not exists frente text default 'F4001';
+alter table public.equipments_vale_verdao add column if not exists frente text default 'F4001';
+alter table public.equipments_floresta add column if not exists frente text default 'F4001';
+
 -- Limpa policies antigas para evitar erros
 drop policy if exists "Public profiles are viewable by everyone." on profiles;
 drop policy if exists "Users can insert own profile." on profiles;
@@ -3165,6 +3235,7 @@ on conflict (id) do nothing;`)}
             const [newFrota, setNewFrota] = useState('');
             const [newGroup, setNewGroup] = useState('Colhedoras');
             const [error, setError] = useState(null);
+            const [activeFrente, setActiveFrente] = useState('F4001'); // Default Frente
 
             const predefinedGroups = [
                 'Colhedoras', 
@@ -3178,7 +3249,7 @@ on conflict (id) do nothing;`)}
 
             useEffect(() => {
                 fetchEquipments();
-            }, [plantId]);
+            }, [plantId, activeFrente]); // Re-fetch when plant or frente changes
 
             const fetchEquipments = async () => {
                 setLoading(true);
@@ -3187,18 +3258,25 @@ on conflict (id) do nothing;`)}
                 else if (plantId === 'vale-verdao') tableName = 'equipments_vale_verdao';
                 else if (plantId === 'floresta') tableName = 'equipments_floresta';
                 
+                // Try to filter by frente. Note: column 'frente' must exist.
+                // If not, we might need to rely on client-side filtering if we used a shared table without column?
+                // But user asked to separate them. Let's assume we use a 'frente' column.
                 const { data, error } = await supabaseClient
                     .from(tableName)
                     .select('*')
+                    .eq('frente', activeFrente) // Filter by Frente
                     .order('group_name', { ascending: true })
                     .order('frota', { ascending: true });
 
                 if (error) {
                     console.error('Error fetching equipments:', error);
-                    setError(error.message);
+                    if (error.code === '42703') {
+                        setError("ATENÇÃO: Banco de Dados Desatualizado. Vá no menu Admin > Instruções SQL e execute o comando para adicionar a coluna 'frente'.");
+                    } else {
+                        setError(error.message);
+                    }
                 } else {
                     setEquipments(data || []);
-                    // Extract unique groups from data + predefined
                     const usedGroups = new Set((data || []).map(e => e.group_name));
                     predefinedGroups.forEach(g => usedGroups.add(g));
                     setGroups(Array.from(usedGroups).sort());
@@ -3215,7 +3293,7 @@ on conflict (id) do nothing;`)}
                 
                 const { error } = await supabaseClient
                     .from(tableName)
-                    .insert([{ frota: newFrota, group_name: newGroup }]);
+                    .insert([{ frota: newFrota, group_name: newGroup, frente: activeFrente }]);
 
                 if (error) {
                     alert('Erro ao adicionar: ' + error.message);
@@ -3236,7 +3314,8 @@ on conflict (id) do nothing;`)}
                 const { error } = await supabaseClient
                     .from(tableName)
                     .delete()
-                    .eq('frota', frota);
+                    .eq('frota', frota)
+                    .eq('frente', activeFrente);
 
                 if (error) {
                     alert('Erro ao excluir: ' + error.message);
@@ -3254,7 +3333,23 @@ on conflict (id) do nothing;`)}
             return (
                 <div className="p-4 max-w-7xl mx-auto">
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-2xl font-bold text-gray-800">Gestão de Equipamentos - {plant.name}</h2>
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-2xl font-bold text-gray-800">Gestão de Equipamentos</h2>
+                            <div className="flex bg-gray-200 rounded p-1">
+                                <button
+                                    onClick={() => setActiveFrente('F4001')}
+                                    className={`px-3 py-1 rounded text-sm font-bold ${activeFrente === 'F4001' ? 'bg-white shadow text-green-700' : 'text-gray-600 hover:bg-gray-300'}`}
+                                >
+                                    Frente 4001
+                                </button>
+                                <button
+                                    onClick={() => setActiveFrente('F4002')}
+                                    className={`px-3 py-1 rounded text-sm font-bold ${activeFrente === 'F4002' ? 'bg-white shadow text-green-700' : 'text-gray-600 hover:bg-gray-300'}`}
+                                >
+                                    Frente 4002
+                                </button>
+                            </div>
+                        </div>
                         <button 
                             onClick={() => setShowAddModal(true)}
                             className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 flex items-center gap-2"
@@ -3676,7 +3771,7 @@ on conflict (id) do nothing;`)}
                         }
                         setNotification({ message: 'Erro ao salvar os dados! Verifique a conexão ou tabela.', type: 'error' });
                     } else {
-                        setNotification({ message: 'Horímetro registrado com sucesso!', type: 'success' });
+                        setNotification({ message: 'Dados salvos no banco de dados!', type: 'success' });
                     }
                 } catch (err) {
                     console.error("Save Connection Error:", err);
@@ -3736,47 +3831,57 @@ on conflict (id) do nothing;`)}
                     const dates = Object.keys(allData[activeFrenteId]).sort();
                     const prevDate = dates.reverse().find(d => d < selectedDate);
                     
-                    let newData = createInitialData(activeFrenteId, selectedDate, plantId);
-                    
-                    if (prevDate) {
-                        const prevDayData = allData[activeFrenteId][prevDate];
+                    const initNewDay = async () => {
+                        let newData;
                         
-                        // Carry over ALL equipment groups and items from previous day
-                        // This ensures added fleets are preserved and hourmeters are carried over
-                        newData.groups = prevDayData.groups.map(prevGroup => ({
-                            ...prevGroup,
-                            items: prevGroup.items.map(prevItem => {
-                                const prevFinal = prevItem.shiftB.final;
-                                // Use Shift B Final as Shift A Initial for next day
-                                const startValue = (prevFinal !== null && prevFinal !== undefined) ? prevFinal : null;
-                                
-                                return {
-                                    ...prevItem,
-                                    shiftA: { 
-                                        initial: startValue, 
-                                        final: null, 
-                                        worked: 0 
-                                    },
-                                    shiftB: { 
-                                        initial: null, 
-                                        final: null, 
-                                        worked: 0 
-                                    },
-                                    totalAB: 0,
-                                    status: 'ok', // Reset status to OK for new day
-                                    obs: ''      // Clear observations
-                                };
-                            })
-                        }));
-                    }
+                        if (prevDate) {
+                            const prevDayData = allData[activeFrenteId][prevDate];
+                            
+                            // Initialize standard structure
+                            newData = createInitialData(activeFrenteId, selectedDate, plantId);
 
-                    setAllData(prev => ({
-                        ...prev,
-                        [activeFrenteId]: {
-                            ...prev[activeFrenteId],
-                            [selectedDate]: newData
+                            // Carry over ALL equipment groups and items from previous day
+                            // This ensures added fleets are preserved and hourmeters are carried over
+                            newData.groups = prevDayData.groups.map(prevGroup => ({
+                                ...prevGroup,
+                                items: prevGroup.items.map(prevItem => {
+                                    const prevFinal = prevItem.shiftB.final;
+                                    // Use Shift B Final as Shift A Initial for next day
+                                    const startValue = (prevFinal !== null && prevFinal !== undefined) ? prevFinal : null;
+                                    
+                                    return {
+                                        ...prevItem,
+                                        shiftA: { 
+                                            initial: startValue, 
+                                            final: null, 
+                                            worked: 0 
+                                        },
+                                        shiftB: { 
+                                            initial: null, 
+                                            final: null, 
+                                            worked: 0 
+                                        },
+                                        totalAB: 0,
+                                        status: 'ok', // Reset status to OK for new day
+                                        obs: ''      // Clear observations
+                                    };
+                                })
+                            }));
+                        } else {
+                            // If no history, fetch from DB based on Frente
+                            newData = await createReportFromDb(activeFrenteId, selectedDate, plantId);
                         }
-                    }));
+
+                        setAllData(prev => ({
+                            ...prev,
+                            [activeFrenteId]: {
+                                ...prev[activeFrenteId],
+                                [selectedDate]: newData
+                            }
+                        }));
+                    };
+
+                    initNewDay();
                 }
             }, [selectedDate, activeFrenteId, allData]);
 
@@ -4358,6 +4463,25 @@ on conflict (id) do nothing;`)}
                 return readings;
             }, [allData, activeFrenteId, selectedDate]);
 
+            const playErrorSound = () => {
+                try {
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(220, ctx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(110, ctx.currentTime + 0.3);
+                    gain.gain.setValueAtTime(0.5, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.3);
+                } catch (e) {
+                    console.error("Audio context error", e);
+                }
+            };
+
             // Mobile Handlers
             const handleMobileNewLaunch = () => {
                 if (!activeFrenteId && Object.keys(allData).length > 0) {
@@ -4409,7 +4533,50 @@ on conflict (id) do nothing;`)}
                         groups={currentData.groups} 
                         shift={mobileShift} 
                         onUpdate={(groupId, itemId, field, value) => {
-                             updateEquipment(groupId, itemId, field, value === '' ? null : parseFloat(value));
+                             const val = value === '' ? null : parseFloat(value);
+                             
+                             // Mobile Validation with Sound and Alert
+                             if (val !== null) {
+                                 const group = currentData.groups.find(g => g.id === groupId);
+                                 const item = group ? group.items.find(i => i.id === itemId) : null;
+                                 
+                                 if (item && item.frota) {
+                                     // 1. Check against Previous Reading
+                                     const prevReading = lastReadings[item.frota]?.value;
+                                     if (prevReading !== undefined && prevReading !== null) {
+                                         if (val < prevReading) {
+                                             playErrorSound();
+                                             alert(`ATENÇÃO: Valor inválido!\nO horímetro (${val}) não pode ser menor que o fechamento anterior (${prevReading}).`);
+                                             return;
+                                         }
+                                     }
+
+                                     // 2. Check Consistency (Final >= Initial)
+                                     const parts = field.split('.');
+                                     if (parts.length === 2) {
+                                         const shiftName = parts[0]; 
+                                         const type = parts[1];
+                                         
+                                         if (type === 'final') {
+                                             const currentInitial = item[shiftName].initial;
+                                             if (currentInitial !== null && val < currentInitial) {
+                                                 playErrorSound();
+                                                 alert(`ATENÇÃO: Valor inválido!\nO horímetro final (${val}) não pode ser menor que o inicial (${currentInitial}).`);
+                                                 return;
+                                             }
+                                         } else if (type === 'initial') {
+                                             const currentFinal = item[shiftName].final;
+                                             if (currentFinal !== null && val > currentFinal) {
+                                                 playErrorSound();
+                                                 alert(`ATENÇÃO: Valor inválido!\nO horímetro inicial (${val}) não pode ser maior que o final (${currentFinal}).`);
+                                                 return;
+                                             }
+                                         }
+                                     }
+                                 }
+                             }
+
+                             updateEquipment(groupId, itemId, field, val);
                         }} 
                         onBack={handleMobileBack} 
                         onSave={handleSave} 
