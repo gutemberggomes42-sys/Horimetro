@@ -3339,22 +3339,35 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                         ) : historyData.length === 0 ? (
                                             <tr><td colSpan="6" className="p-4 text-center text-gray-500">Nenhum registro encontrado.</td></tr>
                                         ) : (
-                                            historyData.map((item, i) => (
-                                                <tr key={i} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setSelectedHistoryFleet(item)}>
-                                                    <td className="p-3 text-gray-600">{new Date(item.reference_date).toLocaleDateString('pt-BR')}</td>
-                                                    <td className="p-3 font-bold text-gray-800">{item.frota}</td>
-                                                    <td className="p-3">
-                                                        <span className={`px-2 py-0.5 rounded-full text-xs ${item.tipo === 'resumo' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
-                                                            {item.tipo}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-3 text-gray-600 max-w-[200px] truncate">{item.motivo}</td>
-                                                    <td className="p-3 font-mono font-bold text-orange-600">
-                                                        {item.disponibilidade ? (item.disponibilidade * 100).toFixed(1) + '%' : '-'}
-                                                    </td>
-                                                    <td className="p-3 text-blue-600 hover:underline text-xs">Ver Completo</td>
-                                                </tr>
-                                            ))
+                                            (() => {
+                                                const grouped = {};
+                                                historyData.forEach(item => {
+                                                    const key = `${item.frota}-${item.reference_date}`;
+                                                    if (!grouped[key]) grouped[key] = { summary: null, details: [], frota: item.frota, date: item.reference_date };
+                                                    grouped[key].details.push(item);
+                                                    if (item.tipo === 'resumo' || (item.motivo && item.motivo.includes('ACUMULADO'))) grouped[key].summary = item;
+                                                });
+                                                
+                                                return Object.values(grouped).sort((a,b) => new Date(b.date) - new Date(a.date)).map((group, i) => {
+                                                    const displayItem = group.summary || group.details[0];
+                                                    return (
+                                                        <tr key={i} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setSelectedHistoryFleet(group)}>
+                                                            <td className="p-3 text-gray-600">{new Date(group.date).toLocaleDateString('pt-BR')}</td>
+                                                            <td className="p-3 font-bold text-gray-800">{group.frota}</td>
+                                                            <td className="p-3">
+                                                                <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
+                                                                    resumo
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-3 text-gray-600 max-w-[200px] truncate">{displayItem.motivo}</td>
+                                                            <td className="p-3 font-mono font-bold text-orange-600">
+                                                                {displayItem.disponibilidade ? (displayItem.disponibilidade * 100).toFixed(1) + '%' : '-'}
+                                                            </td>
+                                                            <td className="p-3 text-blue-600 hover:underline text-xs">Ver Completo</td>
+                                                        </tr>
+                                                    );
+                                                });
+                                            })()
                                         )}
                                     </tbody>
                                 </table>
@@ -3370,41 +3383,49 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                     <h3 className="font-bold">Detalhes do Registro</h3>
                                     <button onClick={() => setSelectedHistoryFleet(null)} className="hover:bg-orange-700 p-1 rounded-full"><Icons.X size={20} /></button>
                                 </div>
-                                <div className="p-6 space-y-4">
-                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                                    <div className="flex justify-between items-center mb-4">
                                         <div>
                                             <p className="text-gray-500 text-xs">Data Referência</p>
-                                            <p className="font-bold">{new Date(selectedHistoryFleet.reference_date).toLocaleDateString('pt-BR')}</p>
+                                            <p className="font-bold">{new Date(selectedHistoryFleet.date).toLocaleDateString('pt-BR')}</p>
                                         </div>
                                         <div>
-                                            <p className="text-gray-500 text-xs">Frota</p>
-                                            <p className="font-bold text-lg">{selectedHistoryFleet.frota}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-gray-500 text-xs">Tipo</p>
-                                            <p className="capitalize">{selectedHistoryFleet.tipo}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-gray-500 text-xs">Disponibilidade</p>
-                                            <p className="font-bold text-orange-600">{selectedHistoryFleet.disponibilidade ? (selectedHistoryFleet.disponibilidade * 100).toFixed(2) + '%' : 'N/A'}</p>
+                                            <p className="text-gray-500 text-xs text-right">Frota</p>
+                                            <p className="font-bold text-xl text-right">{selectedHistoryFleet.frota}</p>
                                         </div>
                                     </div>
-                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                                        <p className="text-gray-500 text-xs mb-1">Motivo / Descrição</p>
-                                        <p className="text-gray-800 font-medium">{selectedHistoryFleet.motivo || 'Sem descrição'}</p>
+
+                                    <div className="border-t border-gray-100 pt-4">
+                                        <h4 className="font-bold text-gray-700 mb-2 text-sm">Resumo de Disponibilidade</h4>
+                                        {selectedHistoryFleet.summary ? (
+                                             <div className="bg-blue-50 p-3 rounded-lg flex justify-between items-center">
+                                                <span className="text-sm text-blue-800 font-medium">{selectedHistoryFleet.summary.motivo}</span>
+                                                <span className="font-bold text-xl text-blue-900">{selectedHistoryFleet.summary.disponibilidade ? (selectedHistoryFleet.summary.disponibilidade * 100).toFixed(1) + '%' : '-'}</span>
+                                             </div>
+                                        ) : (
+                                            <p className="text-xs text-gray-500 italic">Nenhum resumo consolidado encontrado.</p>
+                                        )}
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4 text-xs text-gray-600">
-                                        <div>
-                                            <p className="font-bold">Data Parada:</p>
-                                            <p>{selectedHistoryFleet.data_parada || '-'}</p>
+
+                                    <div className="border-t border-gray-100 pt-4">
+                                        <h4 className="font-bold text-gray-700 mb-2 text-sm">Detalhamento de Paradas ({selectedHistoryFleet.details.filter(d => d.tipo !== 'resumo').length})</h4>
+                                        <div className="space-y-2">
+                                            {selectedHistoryFleet.details.filter(d => d.tipo !== 'resumo').map((detail, idx) => (
+                                                <div key={idx} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm">
+                                                    <div className="flex justify-between mb-1">
+                                                        <span className="font-bold text-gray-700">{detail.motivo}</span>
+                                                        {detail.tempo_parado && <span className="text-xs bg-gray-200 px-2 py-0.5 rounded text-gray-700">{detail.tempo_parado}</span>}
+                                                    </div>
+                                                    <div className="flex gap-4 text-xs text-gray-500">
+                                                        <span>Início: {detail.data_parada || '-'}</span>
+                                                        <span>Fim: {detail.data_retorno || '-'}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {selectedHistoryFleet.details.filter(d => d.tipo !== 'resumo').length === 0 && (
+                                                <p className="text-center text-gray-400 text-xs py-2">Nenhuma parada registrada.</p>
+                                            )}
                                         </div>
-                                        <div>
-                                            <p className="font-bold">Data Retorno:</p>
-                                            <p>{selectedHistoryFleet.data_retorno || '-'}</p>
-                                        </div>
-                                    </div>
-                                    <div className="text-xs text-gray-400 pt-4 border-t text-center">
-                                        Registrado em: {new Date(selectedHistoryFleet.created_at).toLocaleString('pt-BR')}
                                     </div>
                                 </div>
                             </div>
