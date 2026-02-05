@@ -301,6 +301,12 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             ),
             Clock: ({ size = 24, className = "" }) => (
                 <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            ),
+            Percent: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+            ),
+            Activity: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             )
         };
 
@@ -375,7 +381,8 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 title: `Horas Trabalhadas por Equipamentos. ${frenteId}`,
                 date: new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR'),
                 groups: [],
-                plantId: plantId // Storing plantId to separate data
+                plantId: plantId, // Storing plantId to separate data
+                frenteType: type
              };
 
              const isCambui = false; // Disable pre-filled fleets for Cambui to match other units
@@ -693,8 +700,10 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             );
         };
 
-        const EquipmentRow = ({ equipment, plant, onChange, onDelete, onTransfer, isLast, groupName, onSqlError, lastReading, isAppMode }) => {
+        const EquipmentRow = ({ equipment, plant, onChange, onDelete, onTransfer, isLast, groupName, onSqlError, lastReading, isAppMode, frenteType }) => {
             const [showMobileModal, setShowMobileModal] = useState(false);
+            const isCaminhoes = frenteType === 'caminhoes';
+
             const handleChange = (field, value) => {
                 // Validação de Excesso de Horas (> 12h)
                 if ((field.includes('initial') || field.includes('final')) && value !== null && typeof value === 'number') {
@@ -824,13 +833,13 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             )}
                         </div>
                     </td>
-                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.initial, 'shiftA.initial', regressionError, regressionError ? `Valor menor que anterior (${lastReading.value} em ${lastReading.date.split('-').reverse().join('/')})` : "")}</td>}
-                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.final, 'shiftA.final', shiftAError, "Hora Final menor que Inicial!")}</td>}
-                    {!isAppMode && <td className={`border-r border-gray-400 font-bold text-center ${workedAHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedAHigh ? "Mais de 24h!" : ""}>{equipment.shiftA.worked.toFixed(1)}</td>}
-                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.maintenance, 'shiftA.maintenance')}</td>}
-                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.initial, 'shiftB.initial')}</td>}
-                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.final, 'shiftB.final', shiftBError, "Hora Final menor que Inicial!")}</td>}
-                    {isAppMode && (
+                    {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.initial, 'shiftA.initial', regressionError, regressionError ? `Valor menor que anterior (${lastReading.value} em ${lastReading.date.split('-').reverse().join('/')})` : "")}</td>}
+                    {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.final, 'shiftA.final', shiftAError, "Hora Final menor que Inicial!")}</td>}
+                    {!isAppMode && !isCaminhoes && <td className={`border-r border-gray-400 font-bold text-center ${workedAHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedAHigh ? "Mais de 24h!" : ""}>{equipment.shiftA.worked.toFixed(1)}</td>}
+                    {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.maintenance, 'shiftA.maintenance')}</td>}
+                    {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.initial, 'shiftB.initial')}</td>}
+                    {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.final, 'shiftB.final', shiftBError, "Hora Final menor que Inicial!")}</td>}
+                    {isAppMode && !isCaminhoes && (
                         <td className="border-r border-gray-300 bg-gray-100 text-center">
                              <div className="flex items-center justify-center space-x-2">
                                 <button 
@@ -849,16 +858,27 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                              </div>
                         </td>
                     )}
-                    {!isAppMode && <td className={`border-r border-gray-400 font-bold text-center ${workedBHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedBHigh ? "Mais de 24h!" : ""}>{equipment.shiftB.worked.toFixed(1)}</td>}
-                    {!isAppMode && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.maintenance, 'shiftB.maintenance')}</td>}
-                    {!isAppMode && <td className="border-r border-gray-400 bg-gray-200 font-bold text-center">{equipment.totalAB.toFixed(1)}</td>}
-                    {!isAppMode && <td className="border-r border-gray-400 text-center cursor-pointer"
+                    {isAppMode && isCaminhoes && (
+                         <td className="border-r border-gray-300 bg-gray-100 text-center">
+                            <button 
+                                onClick={() => onDelete(equipment.id)}
+                                className="text-red-600 p-1"
+                                title="Excluir Frota"
+                            >
+                                <Icons.X size={16} />
+                            </button>
+                        </td>
+                    )}
+                    {!isAppMode && !isCaminhoes && <td className={`border-r border-gray-400 font-bold text-center ${workedBHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedBHigh ? "Mais de 24h!" : ""}>{equipment.shiftB.worked.toFixed(1)}</td>}
+                    {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.maintenance, 'shiftB.maintenance')}</td>}
+                    {!isAppMode && !isCaminhoes && <td className="border-r border-gray-400 bg-gray-200 font-bold text-center">{equipment.totalAB.toFixed(1)}</td>}
+                    {(!isAppMode || isCaminhoes) && <td className="border-r border-gray-400 text-center cursor-pointer"
                         onClick={() => handleChange('status', equipment.status === 'ok' ? 'issue' : 'ok')}>
                         <div className={`flex items-center justify-center h-full w-full ${equipment.status === 'ok' ? 'text-green-600' : 'bg-red-600 text-white'}`}>
                             {equipment.status === 'ok' ? <Icons.Check size={16} /> : <Icons.X size={16} />}
                         </div>
                     </td>}
-                    {!isAppMode && <td className={`text-center p-0 relative ${equipment.obs.toLowerCase().includes('oficina') ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}>
+                    {(!isAppMode || isCaminhoes) && <td className={`text-center p-0 relative ${equipment.obs.toLowerCase().includes('oficina') ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}>
                         <input
                             type="text"
                             className="w-full h-full bg-transparent text-center text-white placeholder-white/70 focus:outline-none"
@@ -983,7 +1003,9 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             );
         };
 
-        const EquipmentGroupTable = ({ group, plant, onUpdateEquipment, onUpdateGroup, onAddEquipment, onDeleteEquipment, onTransferEquipment, onSqlError, lastReadings, isAppMode }) => {
+        const EquipmentGroupTable = ({ group, plant, onUpdateEquipment, onUpdateGroup, onAddEquipment, onDeleteEquipment, onTransferEquipment, onSqlError, lastReadings, isAppMode, frenteType }) => {
+            const isCaminhoes = frenteType === 'caminhoes';
+            
             const handleRowChange = (equipmentId, field, value) => {
                 onUpdateEquipment(group.id, equipmentId, field, value);
             };
@@ -1012,18 +1034,19 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                 <thead>
                                     <tr className={`${plant.solidBgClass} text-white text-xs`}>
                                         <th className="border border-gray-400 p-1 w-28">Frota</th>
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-20">Hor.Final</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">H.Trab.(A)</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">Manut.(A)</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-20">Hor.Final</th>}
-                                        {isAppMode && <th className="border border-gray-400 p-1 w-20">Lançamento</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">H.Trab.(B)</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">Manut.(B)</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-16">Total A-B</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1 w-10">Status</th>}
-                                        {!isAppMode && <th className="border border-gray-400 p-1">Obs.</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-20">Hor.Final</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-16">H.Trab.(A)</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-16">Manut.(A)</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-20">Hor.Inicial</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-20">Hor.Final</th>}
+                                        {isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-20">Lançamento</th>}
+                                        {isAppMode && isCaminhoes && <th className="border border-gray-400 p-1 w-10">Ações</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-16">H.Trab.(B)</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-16">Manut.(B)</th>}
+                                        {!isAppMode && !isCaminhoes && <th className="border border-gray-400 p-1 w-16">Total A-B</th>}
+                                        {(!isAppMode || isCaminhoes) && <th className="border border-gray-400 p-1 w-10">Status</th>}
+                                        {(!isAppMode || isCaminhoes) && <th className="border border-gray-400 p-1">Obs.</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1040,10 +1063,11 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                 onSqlError={onSqlError}
                                                 isLast={index === group.items.length - 1}
                                                 isAppMode={isAppMode}
+                                                frenteType={frenteType}
                                             />
                                     ))}
                                     <tr className="bg-white">
-                                        <td colSpan={isAppMode ? 2 : 12} className="p-1 text-center border-t border-gray-300">
+                                        <td colSpan={isAppMode ? (isCaminhoes ? 4 : 2) : (isCaminhoes ? 3 : 12)} className="p-1 text-center border-t border-gray-300">
                                             <button 
                                                 onClick={() => onAddEquipment(group.id)}
                                                 className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-4 rounded inline-flex items-center"
@@ -1052,7 +1076,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                             </button>
                                         </td>
                                     </tr>
-                                    {!isAppMode && (
+                                    {!isAppMode && !isCaminhoes && (
                                         <>
                                             <tr className={`${plant.bgClass} font-bold text-xs border-t-2 ${plant.borderClass}`}>
                                                 <td colSpan={3} className="text-right pr-2 border-r border-gray-400 py-1">TOTAL HRS GERAL TURNO A</td>
@@ -1096,9 +1120,10 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             );
         };
 
-        const Dashboard = ({ data, allData, selectedDate, plant }) => {
+        const Dashboard = ({ data, allData, selectedDate, plant, frenteTypes }) => {
             const chartRef = useRef(null);
             const pieRef = useRef(null);
+            const gatecChartRef = useRef(null);
             const frenteChartRef = useRef(null);
             const rendimentoChartRef = useRef(null);
             const acumuladoChartRef = useRef(null);
@@ -1520,6 +1545,17 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         }
                     }
 
+                    // Gatec Availability Calculation
+                    let gatecTotal = 0;
+                    let gatecCount = 0;
+                    items.forEach(item => {
+                        if (item.gatec_availability !== undefined && item.gatec_availability !== null) {
+                            gatecTotal += parseFloat(item.gatec_availability);
+                            gatecCount++;
+                        }
+                    });
+                    const gatecAvailability = gatecCount > 0 ? gatecTotal / gatecCount : 0;
+
                     return {
                         id: frenteId,
                         totalA,
@@ -1530,6 +1566,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         operational,
                         availability,
                         mechanicalAvailability,
+                        gatecAvailability,
                         avgHoursPerMachine,
                         plantioHours,
                         plantioYield,
@@ -1546,11 +1583,25 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     const labels = report.groups.map(g => g.name);
                     const horasA = report.groups.map(g => g.items.reduce((acc, item) => acc + (item.shiftA.worked || 0), 0));
                     const horasB = report.groups.map(g => g.items.reduce((acc, item) => acc + (item.shiftB.worked || 0), 0));
+                    
+                    const gatecAvail = report.groups.map(g => {
+                        let total = 0;
+                        let count = 0;
+                        g.items.forEach(item => {
+                            if (item.gatec_availability) {
+                                total += parseFloat(item.gatec_availability);
+                                count++;
+                            }
+                        });
+                        return count > 0 ? (total / count) * 100 : 0;
+                    });
+
                     return {
                         id: frenteId,
                         labels,
                         horasA,
-                        horasB
+                        horasB,
+                        gatecAvail
                     };
                 }).filter(Boolean);
             }, [allData, selectedDate]);
@@ -1618,7 +1669,11 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     type: 'bar',
                     data: {
                         labels: data.groups.map(g => g.name),
-                        datasets: [
+                        datasets: data.frenteType === 'caminhoes' ? [{
+                            label: 'Quantidade',
+                            data: data.groups.map(g => g.items.length),
+                            backgroundColor: plant.chartPrimary
+                        }] : [
                             {
                                 label: 'Turno A',
                                 data: data.groups.map(g => g.items.reduce((acc, i) => acc + (i.shiftA.worked || 0), 0)),
@@ -1648,6 +1703,42 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     },
                     options: { responsive: true }
                 });
+
+                // Gatec Chart
+                if (gatecChartRef.current) {
+                    const gCtx = gatecChartRef.current.getContext('2d');
+                    if (window.myGatecChart) window.myGatecChart.destroy();
+                    
+                    const currentGroupData = frenteGroups.find(g => g.id === data.id);
+                    if (currentGroupData && currentGroupData.gatecAvail && currentGroupData.gatecAvail.some(v => v > 0)) {
+                         window.myGatecChart = new Chart(gCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: currentGroupData.labels,
+                                datasets: [{
+                                    label: 'Disp. Gatec (%)',
+                                    data: currentGroupData.gatecAvail.map(v => v.toFixed(1)),
+                                    backgroundColor: '#9333ea', // Purple
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                scales: {
+                                    y: { beginAtZero: true, max: 100 }
+                                },
+                                plugins: {
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                return context.parsed.y + '%';
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
 
                 if (frenteChartRef.current) {
                     const frenteCtx = frenteChartRef.current.getContext('2d');
@@ -1795,6 +1886,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 return () => {
                     if (window.myBarChart) window.myBarChart.destroy();
                     if (window.myPieChart) window.myPieChart.destroy();
+                    if (window.myGatecChart) window.myGatecChart.destroy();
                     if (window.myFrenteChart) window.myFrenteChart.destroy();
                     if (window.myRendimentoChart) window.myRendimentoChart.destroy();
                     if (window.myAcumuladoChart) window.myAcumuladoChart.destroy();
@@ -1816,6 +1908,10 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                  onTransferEquipment(transferData.groupId, transferData.equipmentId, targetFrenteId);
                  setTransferModalOpen(false);
                  setTransferData(null);
+            };
+
+            const currentSummary = frentesSummary.find(f => f.id === data.id) || {
+                totalMaint: 0, availability: 0, mechanicalAvailability: 0
             };
 
             return (
@@ -1855,27 +1951,87 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {!(data.frenteType === 'caminhoes') && (
                         <div className={`bg-white p-4 rounded shadow border-l-4 ${plant.borderClass}`}>
                             <div className="text-gray-500 text-sm font-bold">TOTAL HORAS (GERAL)</div>
                             <div className="text-3xl font-bold text-gray-800">{(totalHoursA + totalHoursB).toFixed(1)}h</div>
                         </div>
+                        )}
+                        {!(data.frenteType === 'caminhoes') && (
                         <div className="bg-white p-4 rounded shadow border-l-4" style={{ borderColor: plant.chartPrimary }}>
                             <div className="text-gray-500 text-sm font-bold">TOTAL TURNO A</div>
                             <div className="text-3xl font-bold text-gray-800">{totalHoursA.toFixed(1)}h</div>
                         </div>
+                        )}
+                        {!(data.frenteType === 'caminhoes') && (
                         <div className="bg-white p-4 rounded shadow border-l-4" style={{ borderColor: plant.chartSecondary }}>
                             <div className="text-gray-500 text-sm font-bold">TOTAL TURNO B</div>
                             <div className="text-3xl font-bold text-gray-800">{totalHoursB.toFixed(1)}h</div>
                         </div>
+                        )}
                         <div className="bg-white p-4 rounded shadow border-l-4 border-red-500">
                             <div className="text-gray-500 text-sm font-bold">EQUIP. C/ PROBLEMA</div>
                             <div className="text-3xl font-bold text-red-600">{totalIssues} / {totalMachines}</div>
                         </div>
+                        {!(data.frenteType === 'caminhoes') && (
+                        <div className="bg-white p-4 rounded shadow border-l-4 border-green-500">
+                            <div className="text-gray-500 text-sm font-bold" title="Disponibilidade Física (Baseada em Quantidade de Equipamentos)">DISP. FÍSICA ℹ️</div>
+                            <div className="text-3xl font-bold text-green-600">{(currentSummary.availability * 100).toFixed(0)}%</div>
+                        </div>
+                        )}
+                        {(data.frenteType === 'caminhoes') && (
+                        <div className="bg-white p-4 rounded shadow border-l-4 border-green-500">
+                            <div className="text-gray-500 text-sm font-bold" title="Disponibilidade Física (Baseada em Quantidade de Equipamentos)">DISP. FÍSICA ℹ️</div>
+                            <div className="text-3xl font-bold text-green-600">{(currentSummary.availability * 100).toFixed(0)}%</div>
+                        </div>
+                        )}
+                        {(data.frenteType === 'caminhoes') && (
+                        <div className="bg-white p-4 rounded shadow border-l-4 border-gray-600">
+                            <div className="text-gray-500 text-sm font-bold">TOTAL FROTA</div>
+                            <div className="text-3xl font-bold text-gray-800">{totalMachines}</div>
+                        </div>
+                        )}
+                        {(data.frenteType === 'caminhoes') && (
+                        <div className="bg-white p-4 rounded shadow border-l-4 border-green-600">
+                            <div className="text-gray-500 text-sm font-bold">OPERACIONAIS</div>
+                            <div className="text-3xl font-bold text-green-600">{totalMachines - totalIssues}</div>
+                        </div>
+                        )}
+                        {!(data.frenteType === 'caminhoes') && (
+                        <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+                            <div className="text-gray-500 text-sm font-bold" title="Disponibilidade Mecânica (Horas Trabalhadas / Total Horas)">DISP. MECÂNICA ℹ️</div>
+                            <div className="text-3xl font-bold text-blue-600">{(currentSummary.mechanicalAvailability * 100).toFixed(0)}%</div>
+                        </div>
+                        )}
+                        {!(data.frenteType === 'caminhoes') && (
+                        <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
+                            <div className="text-gray-500 text-sm font-bold">HORAS MANUTENÇÃO</div>
+                            <div className="text-3xl font-bold text-orange-600">{currentSummary.totalMaint.toFixed(1)}h</div>
+                        </div>
+                        )}
+                        {currentSummary.gatecAvailability > 0 && (
+                             <div className="bg-white p-4 rounded shadow border-l-4 border-purple-500">
+                                <div className="text-gray-500 text-sm font-bold" title="Disponibilidade Importada do Gatec (Média)">DISP. GATEC ℹ️</div>
+                                <div className="text-3xl font-bold text-purple-600">{(currentSummary.gatecAvailability * 100).toFixed(0)}%</div>
+                            </div>
+                        )}
+                        {currentSummary.plantioYield > 0 && (
+                             <div className="bg-white p-4 rounded shadow border-l-4 border-cyan-500">
+                                <div className="text-gray-500 text-sm font-bold" title={`Rendimento do grupo ${currentSummary.plantioGroupName}`}>RENDIMENTO</div>
+                                <div className="text-3xl font-bold text-cyan-600">{currentSummary.plantioYield.toFixed(2)}</div>
+                            </div>
+                        )}
+                        {!(data.frenteType === 'caminhoes') && (
+                        <div className="bg-white p-4 rounded shadow border-l-4 border-gray-500">
+                             <div className="text-gray-500 text-sm font-bold" title="Média de horas trabalhadas por equipamento">MÉDIA HORAS</div>
+                             <div className="text-3xl font-bold text-gray-600">{currentSummary.avgHoursPerMachine.toFixed(1)}h</div>
+                        </div>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white p-4 rounded shadow">
-                            <h3 className="font-bold text-gray-700 mb-4">Horas por Grupo de Equipamento</h3>
+                            <h3 className="font-bold text-gray-700 mb-4">{data.frenteType === 'caminhoes' ? 'Quantidade por Grupo de Equipamento' : 'Horas por Grupo de Equipamento'}</h3>
                             <canvas ref={chartRef}></canvas>
                         </div>
                         <div className="bg-white p-4 rounded shadow">
@@ -1883,6 +2039,77 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             <div className="h-64 flex justify-center">
                                 <canvas ref={pieRef}></canvas>
                             </div>
+                        </div>
+                    </div>
+
+                    {frenteGroups.find(g => g.id === data.id)?.gatecAvail.some(v => v > 0) && (
+                        <div className="bg-white p-4 rounded shadow mt-6">
+                            <h3 className="font-bold text-gray-700 mb-4">Disponibilidade Gatec por Grupo</h3>
+                            <canvas ref={gatecChartRef}></canvas>
+                        </div>
+                    )}
+
+                    <div className="bg-white p-4 rounded shadow">
+                        <h3 className="font-bold text-gray-700 mb-4">Detalhamento da Frota</h3>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-xs text-left border-collapse">
+                                <thead className="bg-gray-100 text-gray-700 uppercase font-bold">
+                                    <tr>
+                                        <th className="px-3 py-2 border">Frota</th>
+                                        <th className="px-3 py-2 border">Grupo</th>
+                                        {!(data.frenteType === 'caminhoes') && <th className="px-3 py-2 border text-center">Turno A (Trab / Manut)</th>}
+                                        {!(data.frenteType === 'caminhoes') && <th className="px-3 py-2 border text-center">Turno B (Trab / Manut)</th>}
+                                        <th className="px-3 py-2 border text-center">Total Horas</th>
+                                        <th className="px-3 py-2 border text-center">Disp. Gatec</th>
+                                        <th className="px-3 py-2 border text-center">Status</th>
+                                        <th className="px-3 py-2 border">Observações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {data.groups.flatMap(g => g.items.map(item => ({...item, groupName: g.name}))).map((item, idx) => {
+                                        const workedA = item.shiftA.worked || 0;
+                                        const maintA = item.shiftA.maintenance || 0;
+                                        const workedB = item.shiftB.worked || 0;
+                                        const maintB = item.shiftB.maintenance || 0;
+                                        const total = workedA + workedB;
+                                        
+                                        return (
+                                            <tr key={item.id || idx} className="hover:bg-gray-50">
+                                                <td className="px-3 py-2 border font-bold">{item.frota}</td>
+                                                <td className="px-3 py-2 border text-gray-500">{item.groupName}</td>
+                                                {!(data.frenteType === 'caminhoes') && (
+                                                <td className="px-3 py-2 border text-center">
+                                                    <span className="font-bold text-gray-800">{workedA.toFixed(1)}h</span>
+                                                    <span className="text-gray-400 mx-1">/</span>
+                                                    <span className="text-red-500">{maintA.toFixed(1)}h</span>
+                                                </td>
+                                                )}
+                                                {!(data.frenteType === 'caminhoes') && (
+                                                <td className="px-3 py-2 border text-center">
+                                                    <span className="font-bold text-gray-800">{workedB.toFixed(1)}h</span>
+                                                    <span className="text-gray-400 mx-1">/</span>
+                                                    <span className="text-red-500">{maintB.toFixed(1)}h</span>
+                                                </td>
+                                                )}
+                                                <td className="px-3 py-2 border text-center font-bold bg-gray-50">{total.toFixed(1)}h</td>
+                                                <td className="px-3 py-2 border text-center font-mono text-purple-600 font-bold">
+                                                    {item.gatec_availability ? (item.gatec_availability * 100).toFixed(1) + '%' : '-'}
+                                                </td>
+                                                <td className="px-3 py-2 border text-center">
+                                                    {item.status === 'issue' ? (
+                                                        <span className="px-2 py-1 rounded bg-red-100 text-red-800 font-bold text-[10px]">PROBLEMA</span>
+                                                    ) : (
+                                                        <span className="px-2 py-1 rounded bg-green-100 text-green-800 font-bold text-[10px]">OK</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2 border text-gray-600 italic truncate max-w-xs" title={item.obs}>
+                                                    {item.obs || '-'}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -1928,6 +2155,14 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                     {(f.mechanicalAvailability * 100).toFixed(0)}%
                                                 </span>
                                             </div>
+                                            {f.gatecAvailability > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span>Disp. Gatec:</span>
+                                                    <span className="font-semibold text-purple-600">
+                                                        {(f.gatecAvailability * 100).toFixed(0)}%
+                                                    </span>
+                                                </div>
+                                            )}
                                             <div className="flex justify-between">
                                                 <span>Horas Manut.:</span>
                                                 <span className="font-semibold text-red-500">
@@ -2128,8 +2363,23 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             const [processing, setProcessing] = useState(false);
             const [importDate, setImportDate] = useState(new Date().toISOString().slice(0, 10));
             const [logs, setLogs] = useState([]);
-            const [geminiKey, setGeminiKey] = useState(localStorage.getItem('horimetro_gemini_key') || 'AIzaSyArtrF26aNyFTx2z8rtrgZFwP4X7YwbaAM');
-            const [useGemini, setUseGemini] = useState(!!localStorage.getItem('horimetro_gemini_key'));
+            const [geminiKey, setGeminiKey] = useState(localStorage.getItem('horimetro_gemini_key') || '');
+            const [deepseekKey, setDeepseekKey] = useState(localStorage.getItem('horimetro_deepseek_key') || 'sk-a3ae231c8f0a4b9a9d9ac8d53256e999');
+            const [aiProvider, setAiProvider] = useState(localStorage.getItem('horimetro_ai_provider') || 'deepseek'); // 'gemini' | 'deepseek'
+            const [useGemini, setUseGemini] = useState(!!localStorage.getItem('horimetro_gemini_key') || !!localStorage.getItem('horimetro_deepseek_key'));
+            const [aiModel, setAiModel] = useState(localStorage.getItem('horimetro_ai_model') || 'gemini-1.5-flash');
+
+            useEffect(() => {
+                localStorage.setItem('horimetro_ai_model', aiModel);
+            }, [aiModel]);
+
+            useEffect(() => {
+                localStorage.setItem('horimetro_ai_provider', aiProvider);
+            }, [aiProvider]);
+
+            useEffect(() => {
+                if (deepseekKey) localStorage.setItem('horimetro_deepseek_key', deepseekKey);
+            }, [deepseekKey]);
 
             // Manual Entry State
             const [manualEntry, setManualEntry] = useState({
@@ -2340,8 +2590,10 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 const f = e.target.files[0];
                 if (f) {
                     setFile(f);
-                    if (useGemini && geminiKey) {
-                        processWithGemini(f);
+                    const hasKey = (aiProvider === 'gemini' && geminiKey) || (aiProvider === 'deepseek' && deepseekKey);
+                    
+                    if (useGemini && aiProvider !== 'offline' && hasKey) {
+                        processWithAI(f);
                     } else if (f.name.endsWith('.pdf')) {
                         parsePDF(f);
                     } else {
@@ -2350,9 +2602,115 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 }
             };
 
-            const processWithGemini = async (f) => {
+            const testAIConnection = async () => {
+                if (aiProvider === 'offline') {
+                    alert("✅ Modo Offline Ativo!\nO sistema usará o processamento local (Regex) sem custos.");
+                    return;
+                }
+
+                if (aiProvider === 'gemini' && !geminiKey) {
+                    alert("Por favor, insira uma chave de API do Gemini primeiro.");
+                    return;
+                }
+                if (aiProvider === 'deepseek' && !deepseekKey) {
+                    alert("Por favor, insira uma chave de API do DeepSeek primeiro.");
+                    return;
+                }
+
                 setProcessing(true);
-                setLogs(prev => [...prev, "Iniciando análise com Gemini AI..."]);
+                
+                if (aiProvider === 'deepseek') {
+                     try {
+                        const response = await fetch('https://api.deepseek.com/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${deepseekKey}`
+                            },
+                            body: JSON.stringify({
+                                model: "deepseek-chat",
+                                messages: [
+                                    {"role": "user", "content": "Responda apenas 'OK'."}
+                                ],
+                                stream: false
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const err = await response.json();
+                            throw new Error(`DeepSeek API Error: ${err.error?.message || response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        const text = data.choices?.[0]?.message?.content;
+                        alert(`✅ DeepSeek Conectado!\nResposta: ${text}`);
+                     } catch (e) {
+                        alert(`❌ Falha DeepSeek: ${e.message}`);
+                     }
+                } else {
+                    // Gemini Logic
+                    const modelsToTry = [
+                        aiModel, 
+                        'gemini-1.5-flash',
+                        'gemini-1.5-pro',
+                        'gemini-2.0-flash',
+                        'gemini-1.0-pro'
+                    ];
+                    
+                    const uniqueModels = [...new Set(modelsToTry)];
+                    let workingModel = null;
+                    let lastError = null;
+                    let successMsg = "";
+                    let reportLog = "";
+    
+                    for (const model of uniqueModels) {
+                        try {
+                            if (model !== uniqueModels[0]) await new Promise(r => setTimeout(r, 1000));
+                            
+                            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contents: [{ parts: [{ text: "Responda 'OK'." }] }]
+                                })
+                            });
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                                workingModel = model;
+                                successMsg = text;
+                                reportLog += `✅ ${model}: Sucesso!\n`;
+                                break; 
+                            } else {
+                                const err = await response.json();
+                                const errMsg = err.error?.message || response.statusText;
+                                reportLog += `❌ ${model}: Falhou (${response.status} - ${errMsg.substring(0, 50)}...)\n`;
+                                throw new Error(`Erro ${response.status}: ${errMsg}`);
+                            }
+                        } catch (e) {
+                            console.warn(`Teste falhou com ${model}:`, e);
+                            lastError = e;
+                            if (!reportLog.includes(model)) {
+                                 reportLog += `❌ ${model}: Erro (${e.message})\n`;
+                            }
+                        }
+                    }
+    
+                    if (workingModel) {
+                        setAiModel(workingModel);
+                        alert(`✅ CONEXÃO BEM SUCEDIDA!\n\n${reportLog}\nModelo definido: ${workingModel}\n\nO sistema usará este modelo automaticamente.`);
+                    } else {
+                        alert(`❌ FALHA EM TODOS OS MODELOS.\n\nRelatório:\n${reportLog}\n\nDica: Se o erro for 'Quota exceeded' ou 'Limit: 0', sua conta Google pode estar sem acesso gratuito ou bloqueada na região.`);
+                    }
+                }
+                
+                setProcessing(false);
+            };
+
+            const processWithAI = async (f) => {
+                setProcessing(true);
+                setLogs(prev => [...prev, `Iniciando análise com ${aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'} AI...`]);
                 try {
                     let textContent = "";
                     
@@ -2433,49 +2791,101 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         ${textContent.substring(0, 45000)} 
                     `;
 
-                    const callGeminiModel = async (modelName) => {
-                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`, {
+                    let jsonStr;
+
+                    if (aiProvider === 'deepseek') {
+                         setLogs(prev => [...prev, "Enviando solicitação para DeepSeek AI..."]);
+                         const response = await fetch('https://api.deepseek.com/chat/completions', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${deepseekKey}`
+                            },
                             body: JSON.stringify({
-                                contents: [{ parts: [{ text: prompt }] }]
+                                model: "deepseek-chat",
+                                messages: [
+                                    {"role": "system", "content": "You are a helpful assistant that extracts structured JSON data from reports. Always return valid JSON only, without markdown code blocks. The user will provide a text report and you must extract the data according to the schema provided in the prompt."},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                stream: false
                             })
                         });
-                        
+
                         if (!response.ok) {
-                            const errText = await response.text();
-                            throw new Error(`HTTP ${response.status} - ${errText}`);
+                             const err = await response.json();
+                             throw new Error(`DeepSeek API Error: ${err.error?.message || response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        const content = data.choices?.[0]?.message?.content;
+                        if (!content) throw new Error("DeepSeek retornou resposta vazia.");
+                        
+                        jsonStr = content.replace(/```json/g, '').replace(/```/g, '').trim();
+                        setLogs(prev => [...prev, "Resposta recebida do DeepSeek!"]);
+
+                    } else {
+                        // Gemini Logic
+                        const callGeminiModel = async (modelName) => {
+                            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contents: [{ parts: [{ text: prompt }] }]
+                                })
+                            });
+                            
+                            if (!response.ok) {
+                                let errorMsg = response.statusText;
+                                try {
+                                    const errJson = await response.json();
+                                    errorMsg = errJson.error?.message || errorMsg;
+                                } catch (e) {
+                                    try { errorMsg = await response.text(); } catch (e2) {}
+                                }
+                                throw new Error(`HTTP ${response.status} - ${errorMsg}`);
+                            }
+
+                            const res = await response.json();
+                            if (res.error) throw new Error(res.error.message);
+                            return res;
+                        };
+
+                        let result;
+                        // Auto-Failover Logic
+                        const modelsToTry = [aiModel, 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'];
+                        const uniqueModels = [...new Set(modelsToTry)];
+                        let success = false;
+
+                        for (const model of uniqueModels) {
+                            try {
+                                setLogs(prev => [...prev, `Tentando modelo ${model}...`]);
+                                
+                                // Delay para evitar rate limit agressivo
+                                if (model !== uniqueModels[0]) {
+                                    await new Promise(r => setTimeout(r, 1500));
+                                }
+
+                                result = await callGeminiModel(model);
+                                setLogs(prev => [...prev, `Sucesso com ${model}!`]);
+                                success = true;
+                                if (model !== aiModel) {
+                                    setAiModel(model); 
+                                    setLogs(prev => [...prev, `Modelo preferido atualizado para ${model}`]);
+                                }
+                                break;
+                            } catch (err) {
+                                console.warn(`Falha com ${model}:`, err);
+                                setLogs(prev => [...prev, `Falha com ${model}: ${err.message}`]);
+                            }
                         }
 
-                        const res = await response.json();
-                        if (res.error) throw new Error(res.error.message);
-                        return res;
-                    };
-
-                    let result;
-                    const models = [
-                        'gemini-2.0-flash', 
-                        'gemini-2.0-flash-exp', 
-                        'gemini-1.5-flash', 
-                        'gemini-1.5-pro',
-                        'gemini-1.0-pro'
-                    ];
-                    
-                    for (const model of models) {
-                        try {
-                            setLogs(prev => [...prev, `Tentando modelo ${model}...`]);
-                            result = await callGeminiModel(model);
-                            setLogs(prev => [...prev, `Sucesso com ${model}!`]);
-                            break;
-                        } catch (err) {
-                            console.warn(`Falha com ${model}:`, err);
-                            setLogs(prev => [...prev, `Falha com ${model}: ${err.message}`]);
-                            if (model === models[models.length - 1]) throw new Error("Todos os modelos de IA falharam. Verifique sua chave API ou tente novamente mais tarde.");
+                        if (!success) {
+                            throw new Error(`Todos os modelos de IA falharam (429 Quota/Outros). Verifique sua chave API.`);
                         }
+                        
+                        const rawText = result.candidates[0].content.parts[0].text;
+                        jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
                     }
-                    
-                    const rawText = result.candidates[0].content.parts[0].text;
-                    const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
                     let json;
                     try {
                         json = JSON.parse(jsonStr);
@@ -2499,9 +2909,22 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     setLogs(prev => [...prev, `Gemini processou ${rows.length} registros com sucesso.`]);
 
                 } catch (e) {
-                    console.error("Erro Gemini:", e);
-                    setLogs(prev => [...prev, `Erro na IA: ${e.message}. Tentando método tradicional aprimorado...`]);
-                    alert(`A IA encontrou um problema: ${e.message}\n\nTentando método de leitura padrão.`);
+                    console.error("Erro AI:", e);
+                    const isQuotaError = e.message.includes('429') || 
+                                       e.message.includes('402') || 
+                                       e.message.includes('Quota') || 
+                                       e.message.includes('Balance') || 
+                                       e.message.includes('Insufficient');
+
+                    if (isQuotaError) {
+                        setAiProvider('offline');
+                        alert(`⚠️ MODO OFFLINE ATIVADO AUTOMATICAMENTE\n\nErro na IA: ${e.message}\n\nO sistema mudou para processamento local para evitar interrupções.`);
+                    } else {
+                        alert(`A IA encontrou um problema: ${e.message}\n\nTentando método de leitura padrão.`);
+                    }
+
+                    setLogs(prev => [...prev, `Erro na IA: ${e.message}. Alternando para método tradicional...`]);
+                    
                     if (f.name.endsWith('.pdf')) parsePDF(f);
                     else parseExcel(f);
                 } finally {
@@ -3087,20 +3510,83 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                 onChange={e => setUseGemini(e.target.checked)}
                                                 className="form-checkbox text-orange-600 h-4 w-4"
                                             />
-                                            <label className="text-sm font-bold text-gray-800">Usar Gemini AI (Google) para Reconhecimento Avançado</label>
+                                            <label className="text-sm font-bold text-gray-800">Usar Inteligência Artificial para Reconhecimento Avançado</label>
                                         </div>
                                         {useGemini && (
                                             <div className="mt-2 animate-fade-in">
-                                                <label className="block text-xs font-bold text-gray-600 mb-1">Chave de API do Gemini (Google AI Studio)</label>
-                                                <input 
-                                                    type="password" 
-                                                    value={geminiKey}
-                                                    onChange={e => setGeminiKey(e.target.value)}
-                                                    placeholder="Cole sua API Key aqui..."
-                                                    className="w-full border border-orange-200 rounded-md p-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none bg-white"
-                                                />
+                                                <label className="block text-xs font-bold text-gray-600 mb-1">Provedor de IA</label>
+                                                <select
+                                                    value={aiProvider}
+                                                    onChange={e => setAiProvider(e.target.value)}
+                                                    className="w-full border border-orange-200 rounded-md p-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none bg-white mb-2"
+                                                >
+                                                    <option value="gemini">Google Gemini (Recomendado)</option>
+                                                    <option value="deepseek">DeepSeek AI (Alternativa)</option>
+                                                    <option value="offline">Offline (Sem IA / Grátis)</option>
+                                                </select>
+
+                                                {aiProvider === 'gemini' && (
+                                                    <>
+                                                        <label className="block text-xs font-bold text-gray-600 mb-1">Chave de API do Gemini (Google AI Studio)</label>
+                                                        <input 
+                                                            type="password" 
+                                                            value={geminiKey}
+                                                            onChange={e => setGeminiKey(e.target.value)}
+                                                            placeholder="Cole sua API Key aqui..."
+                                                            className="w-full border border-orange-200 rounded-md p-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none bg-white mb-2"
+                                                        />
+                                                        <label className="block text-xs font-bold text-gray-600 mb-1">Modelo de IA</label>
+                                                        <select
+                                                            value={aiModel}
+                                                            onChange={e => setAiModel(e.target.value)}
+                                                            className="w-full border border-orange-200 rounded-md p-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none bg-white mb-2"
+                                                        >
+                                                            <option value="gemini-2.0-flash">Gemini 2.0 Flash (Mais rápido)</option>
+                                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Mais estável)</option>
+                                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Mais inteligente)</option>
+                                                            <option value="gemini-1.0-pro">Gemini 1.0 Pro (Compatibilidade)</option>
+                                                        </select>
+                                                    </>
+                                                )}
+
+                                                {aiProvider === 'deepseek' && (
+                                                    <>
+                                                        <label className="block text-xs font-bold text-gray-600 mb-1">Chave de API do DeepSeek</label>
+                                                        <input 
+                                                            type="password" 
+                                                            value={deepseekKey}
+                                                            onChange={e => setDeepseekKey(e.target.value)}
+                                                            placeholder="Cole sua API Key do DeepSeek aqui..."
+                                                            className="w-full border border-orange-200 rounded-md p-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none bg-white mb-2"
+                                                        />
+                                                        <div className="text-[10px] text-gray-500 mb-2">
+                                                            Modelo fixo: <strong>deepseek-chat (V3)</strong>
+                                                        </div>
+                                                    </>
+                                                )}
+
+                                                {aiProvider === 'offline' && (
+                                                    <div className="bg-gray-100 p-2 rounded border border-gray-200 mb-2">
+                                                        <p className="text-[10px] text-gray-600">
+                                                            <strong>Modo Offline:</strong> O sistema usará reconhecimento de texto padrão (Regex). 
+                                                            Não consome créditos de API, mas pode ser menos preciso em relatórios complexos.
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {aiProvider !== 'offline' && (
+                                                    <button 
+                                                        onClick={testAIConnection}
+                                                        className="mt-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                                                    >
+                                                        Testar Conexão com {aiProvider === 'gemini' ? 'Gemini' : 'DeepSeek'}
+                                                    </button>
+                                                )}
+                                                
                                                 <p className="text-[10px] text-gray-500 mt-1">
-                                                    Necessário para usar a IA. Obtenha em: <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline">Google AI Studio</a>. A chave fica salva no seu navegador.
+                                                    {aiProvider === 'gemini' && <>Necessário para usar a IA. Obtenha em: <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline">Google AI Studio</a>.</>}
+                                                    {aiProvider === 'deepseek' && <>Necessário para usar a IA. Obtenha em: <a href="https://platform.deepseek.com/api_keys" target="_blank" className="text-blue-600 underline">DeepSeek Platform</a>.</>}
+                                                    {aiProvider !== 'offline' && " A chave fica salva no seu navegador."}
                                                 </p>
                                             </div>
                                         )}
@@ -3459,23 +3945,46 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 await handleSaveUser(editingUser);
             };
 
+            // Helper to extract availability
+            const calculateReportAvailability = (reportData) => {
+                if (!reportData || !reportData.groups) return 0;
+                let total = 0;
+                let count = 0;
+                
+                reportData.groups.forEach(group => {
+                    group.items.forEach(item => {
+                        // Prioritize gatec_availability if present (from AvailabilityView)
+                        if (item.gatec_availability) {
+                            total += parseFloat(item.gatec_availability);
+                            count++;
+                        }
+                    });
+                });
+                
+                return count > 0 ? (total / count) : 0;
+            };
+
             // Chart Refs
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
+            const availChartRef = useRef(null);
+            const availChartInstance = useRef(null);
 
             // Chart Effect
             useEffect(() => {
-                if (activeView === 'dashboard' && chartRef.current && history.length > 0) {
-                    if (chartInstance.current) {
-                        chartInstance.current.destroy();
-                    }
+                if (activeView === 'dashboard' && chartRef.current && availChartRef.current && history.length > 0) {
+                    // Destroy old instances
+                    if (chartInstance.current) chartInstance.current.destroy();
+                    if (availChartInstance.current) availChartInstance.current.destroy();
 
-                    const ctx = chartRef.current.getContext('2d');
+                    const ctxHours = chartRef.current.getContext('2d');
+                    const ctxAvail = availChartRef.current.getContext('2d');
                     
                     // Aggregate data: Last 7 days
                     const days = 7;
                     const labels = [];
-                    const dataPoints = [];
+                    const dataPointsHours = [];
+                    const dataPointsAvail = [];
                     const now = new Date();
                     
                     for (let i = days - 1; i >= 0; i--) {
@@ -3488,8 +3997,10 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         
                         labels.push(`${day}/${month}`);
                         
-                        // Sum hours for this date
+                        // Filter reports for this date
                         const reports = history.filter(h => h.date === dateStr);
+                        
+                        // Sum hours
                         const totalHours = reports.reduce((acc, r) => {
                             const report = r.report_data || {};
                             const dailyTotal = (report.frotas || []).reduce((fAcc, f) => {
@@ -3497,16 +4008,29 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             }, 0);
                             return acc + dailyTotal;
                         }, 0);
-                        dataPoints.push(totalHours);
+                        dataPointsHours.push(totalHours);
+
+                        // Avg Availability
+                        let dailyAvailSum = 0;
+                        let dailyAvailCount = 0;
+                        reports.forEach(r => {
+                            const avail = calculateReportAvailability(r.report_data);
+                            if (avail > 0) {
+                                dailyAvailSum += avail;
+                                dailyAvailCount++;
+                            }
+                        });
+                        dataPointsAvail.push(dailyAvailCount > 0 ? (dailyAvailSum / dailyAvailCount) * 100 : 0);
                     }
 
-                    chartInstance.current = new Chart(ctx, {
+                    // 1. Hours Chart
+                    chartInstance.current = new Chart(ctxHours, {
                         type: 'bar',
                         data: {
                             labels: labels,
                             datasets: [{
                                 label: 'Horas Trabalhadas',
-                                data: dataPoints,
+                                data: dataPointsHours,
                                 backgroundColor: 'rgba(249, 115, 22, 0.8)',
                                 borderRadius: 6,
                                 borderSkipped: false,
@@ -3521,36 +4045,67 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                     backgroundColor: '#1f2937',
                                     padding: 12,
                                     cornerRadius: 8,
-                                    callbacks: {
-                                        label: (ctx) => `${ctx.raw.toFixed(1)} horas`
-                                    }
+                                    callbacks: { label: (ctx) => `${ctx.raw.toFixed(1)} horas` }
+                                }
+                            },
+                            scales: {
+                                y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f3f4f6' } },
+                                x: { grid: { display: false } }
+                            }
+                        }
+                    });
+
+                    // 2. Availability Chart
+                    availChartInstance.current = new Chart(ctxAvail, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Disponibilidade Média (%)',
+                                data: dataPointsAvail,
+                                borderColor: 'rgba(37, 99, 235, 0.8)',
+                                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                                borderWidth: 3,
+                                pointBackgroundColor: '#fff',
+                                pointBorderColor: 'rgba(37, 99, 235, 1)',
+                                pointRadius: 4,
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: '#1f2937',
+                                    padding: 12,
+                                    cornerRadius: 8,
+                                    callbacks: { label: (ctx) => `${ctx.raw.toFixed(1)}%` }
                                 }
                             },
                             scales: {
                                 y: { 
-                                    beginAtZero: true,
-                                    grid: { borderDash: [2, 4], color: '#f3f4f6' },
-                                    ticks: { font: { size: 11 } }
+                                    beginAtZero: true, 
+                                    max: 100,
+                                    grid: { borderDash: [2, 4], color: '#f3f4f6' } 
                                 },
-                                x: {
-                                    grid: { display: false },
-                                    ticks: { font: { size: 11 } }
-                                }
+                                x: { grid: { display: false } }
                             }
                         }
                     });
                 }
                 
                 return () => {
-                    if (chartInstance.current) {
-                        chartInstance.current.destroy();
-                    }
+                    if (chartInstance.current) chartInstance.current.destroy();
+                    if (availChartInstance.current) availChartInstance.current.destroy();
                 };
             }, [activeView, history]);
 
-            // Derived Stats
+            // Derived Stats & Per Front Data
             const stats = useMemo(() => {
-                if (!history.length) return { total: 0, thisMonth: 0, activeFrentes: 0, lastUpdate: '-' };
+                if (!history.length) return { total: 0, thisMonth: 0, activeFrentes: 0, lastUpdate: '-', avgAvail: 0, perFront: [] };
                 
                 const now = new Date();
                 const thisMonth = history.filter(r => {
@@ -3561,11 +4116,57 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 const uniqueFrentes = new Set(history.map(r => r.frente_id)).size;
                 const lastUpdate = history[0]?.date || '-';
 
+                // Calculate Global Avg Availability (Last 30 days)
+                let totalAvail = 0;
+                let availCount = 0;
+                
+                // Group by Frente
+                const frontStats = {};
+                
+                history.forEach(r => {
+                    const avail = calculateReportAvailability(r.report_data);
+                    
+                    // Global accumulation
+                    if (avail > 0) {
+                        totalAvail += avail;
+                        availCount++;
+                    }
+
+                    // Per Front accumulation
+                    if (!frontStats[r.frente_id]) {
+                        frontStats[r.frente_id] = { 
+                            name: r.frente_id, 
+                            reports: 0, 
+                            totalHours: 0, 
+                            availSum: 0, 
+                            availCount: 0,
+                            lastDate: r.date
+                        };
+                    }
+                    
+                    const report = r.report_data || {};
+                    const hours = (report.frotas || []).reduce((acc, f) => acc + (parseFloat(f.workedHoursA) || 0) + (parseFloat(f.workedHoursB) || 0), 0);
+                    
+                    frontStats[r.frente_id].reports++;
+                    frontStats[r.frente_id].totalHours += hours;
+                    if (avail > 0) {
+                        frontStats[r.frente_id].availSum += avail;
+                        frontStats[r.frente_id].availCount++;
+                    }
+                });
+
+                const perFront = Object.values(frontStats).map(f => ({
+                    ...f,
+                    avgAvail: f.availCount > 0 ? (f.availSum / f.availCount) : 0
+                })).sort((a,b) => b.avgAvail - a.avgAvail);
+
                 return {
                     total: history.length,
                     thisMonth,
                     activeFrentes: uniqueFrentes,
-                    lastUpdate
+                    lastUpdate,
+                    avgAvail: availCount > 0 ? (totalAvail / availCount) : 0,
+                    perFront
                 };
             }, [history]);
 
@@ -5396,6 +5997,7 @@ on conflict (id) do nothing;`)}
             
             // State: Map of frenteId -> { [date]: ReportData }
             const [allData, setAllData] = useState({});
+            const [frenteTypes, setFrenteTypes] = useState({});
             const [activeFrenteId, setActiveFrenteId] = useState('');
             
             const [view, setView] = useState('entry'); // 'entry' or 'dashboard'
@@ -5457,16 +6059,17 @@ on conflict (id) do nothing;`)}
                             setActiveFrenteId('');
                         } else {
                             const newData = {};
+                            const newTypes = {};
                             
                             // Initialize with empty reports for registered frentes
                             if (frentesData) {
                                 frentesData.forEach(f => {
                                     newData[f.name] = {}; 
-                                    // Store type metadata implicitly or explicit state? 
-                                    // Current structure is allData[frenteId][date] = report
-                                    // We might need a separate state for frente types if we want to preserve it correctly for new dates
+                                    if (f.type) newTypes[f.name] = f.type;
                                 });
                             }
+                            
+                            setFrenteTypes(newTypes);
 
                             if (data) {
                                 data.forEach(row => {
@@ -5771,8 +6374,14 @@ on conflict (id) do nothing;`)}
                     if (dataPlantId !== plantId) return null;
                 }
 
-                return data || createInitialData(activeFrenteId, selectedDate, plantId);
-            }, [allData, activeFrenteId, selectedDate, plantId]);
+                const type = frenteTypes[activeFrenteId] || 'plantadora';
+
+                if (data) {
+                    return { ...data, frenteType: type };
+                }
+
+                return createInitialData(activeFrenteId, selectedDate, plantId, type);
+            }, [allData, activeFrenteId, selectedDate, plantId, frenteTypes]);
 
             const historyList = useMemo(() => {
                 const list = [];
@@ -6234,6 +6843,10 @@ on conflict (id) do nothing;`)}
                 setAllData(prev => ({
                     ...prev,
                     [name]: { [selectedDate]: createInitialData(name, selectedDate, plantId, newFrenteType) }
+                }));
+                setFrenteTypes(prev => ({
+                    ...prev,
+                    [name]: newFrenteType
                 }));
                 setActiveFrenteId(name);
                 setShowNewFrenteModal(false);
@@ -6988,6 +7601,7 @@ on conflict (id) do nothing;`)}
                                                     onTransferEquipment={handleTransferEquipment}
                                                     onSqlError={() => setShowSql(true)}
                                                     isAppMode={isAppMode}
+                                                    frenteType={currentData.frenteType}
                                                 />
                                             ))}
                                         </div>
@@ -7009,7 +7623,7 @@ on conflict (id) do nothing;`)}
                             </div>
                         ) : (
                             currentData ? (
-                                <Dashboard data={currentData} allData={allData} selectedDate={selectedDate} plant={plant} />
+                                <Dashboard data={currentData} allData={allData} selectedDate={selectedDate} plant={plant} frenteTypes={frenteTypes} />
                             ) : (
                                 <div className="text-center py-20 text-gray-400">Nenhum dado para exibir no Dashboard.</div>
                             )
