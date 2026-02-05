@@ -41,6 +41,18 @@
     <!-- Chart.js for Dashboard -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <!-- SheetJS for Excel Import -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    
+    <!-- PDF.js for PDF Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        window.pdfjsLib = window['pdfjs-dist/build/pdf'];
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+    
     <style>
         body { font-family: sans-serif; background-color: #f3f4f6; }
         input[type=number]::-webkit-inner-spin-button, 
@@ -277,6 +289,15 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             ),
             Lock: ({ size = 24, className = "" }) => (
                 <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            ),
+            Wrench: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            ),
+            Upload: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            ),
+            Save: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
             )
         };
 
@@ -430,6 +451,17 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             { id: '9609', frota: '9609' },
                             { id: '6459', frota: '6459' }
                         ])
+                    }
+                 ];
+             } else if (type === 'caminhoes') {
+                 // Template Caminhões
+                 base.groups = [
+                    {
+                        id: 'caminhao',
+                        name: 'Caminhão',
+                        yield: 0,
+                        yieldLabel: 'Viagens',
+                        items: cambuiItems([])
                     }
                  ];
              } else {
@@ -649,8 +681,30 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
 
         const EquipmentRow = ({ equipment, plant, onChange, onDelete, onTransfer, isLast, groupName, onSqlError, lastReading, isAppMode }) => {
             const [showMobileModal, setShowMobileModal] = useState(false);
-
             const handleChange = (field, value) => {
+                // Validação de Excesso de Horas (> 12h)
+                if ((field.includes('initial') || field.includes('final')) && value !== null && typeof value === 'number') {
+                    const [shiftName, fieldType] = field.split('.');
+                    if (shiftName && (shiftName === 'shiftA' || shiftName === 'shiftB')) {
+                        const currentInitial = equipment[shiftName]?.initial;
+                        const currentFinal = equipment[shiftName]?.final;
+                        
+                        let newInitial = currentInitial;
+                        let newFinal = currentFinal;
+
+                        if (fieldType === 'initial') newInitial = value;
+                        if (fieldType === 'final') newFinal = value;
+
+                        if (newInitial !== null && newFinal !== null) {
+                            const diff = newFinal - newInitial;
+                            // Permite tolerância de 0.1 para arredondamentos, mas o usuário pediu 12 exato ou menos
+                            if (diff > 12) {
+                                alert(`⚠️ BLOQUEIO: Excesso de Horas!\n\nA diferença lançada é de ${diff.toFixed(1)} horas no ${shiftName === 'shiftA' ? 'Turno A' : 'Turno B'}.\n\nValor não permitido! O limite máximo é de 12 horas.`);
+                                return; // Bloqueia a atualização
+                            }
+                        }
+                    }
+                }
                 onChange(equipment.id, field, value);
             };
 
@@ -805,7 +859,20 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
                             <div className={`${plant.bgClass} p-4 flex justify-between items-center text-white`}>
                                 <h3 className="font-bold text-lg">Lançamento: {equipment.frota}</h3>
-                                <button onClick={() => setShowMobileModal(false)} className="hover:bg-white/20 p-1 rounded">
+                                <button 
+                                    onClick={() => {
+                                        const workedA = equipment.shiftA.worked;
+                                        const workedB = equipment.shiftB.worked;
+                                        const hasErrorA = (typeof workedA === 'number') && (workedA < 0 || workedA > 12.01);
+                                        const hasErrorB = (typeof workedB === 'number') && (workedB < 0 || workedB > 12.01);
+                                        
+                                        if (hasErrorA || hasErrorB) {
+                                            if(!confirm("⚠️ ATENÇÃO: Existem valores inválidos!\n\nSe sair agora, os dados incorretos permanecerão locais mas não poderão ser salvos na nuvem.\n\nDeseja sair mesmo assim?")) return;
+                                        }
+                                        setShowMobileModal(false);
+                                    }} 
+                                    className="hover:bg-white/20 p-1 rounded"
+                                >
                                     <Icons.X size={24} />
                                 </button>
                             </div>
@@ -837,8 +904,8 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                             />
                                         </div>
                                     </div>
-                                    <div className="mt-2 text-xs text-center text-gray-500 font-medium">
-                                        Trabalhado: {equipment.shiftA.worked.toFixed(1)}h
+                                    <div className={`mt-2 text-xs text-center font-medium ${equipment.shiftA.worked < 0 || equipment.shiftA.worked > 12 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                                        Trabalhado: {equipment.shiftA.worked.toFixed(1)}h {equipment.shiftA.worked < 0 ? '(Inválido)' : ''}
                                     </div>
                                 </div>
 
@@ -852,7 +919,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                 step="0.1"
                                                 value={equipment.shiftB.initial ?? ''}
                                                 onChange={(e) => handleChange('shiftB.initial', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                                className="w-full border border-gray-300 rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
+                                                className={`w-full border rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300'}`}
                                                 placeholder="0.0"
                                             />
                                         </div>
@@ -863,20 +930,32 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                 step="0.1"
                                                 value={equipment.shiftB.final ?? ''}
                                                 onChange={(e) => handleChange('shiftB.final', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                                className="w-full border border-gray-300 rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
+                                                className={`w-full border rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300'}`}
                                                 placeholder="0.0"
                                             />
                                         </div>
                                     </div>
-                                    <div className="mt-2 text-xs text-center text-gray-500 font-medium">
-                                        Trabalhado: {equipment.shiftB.worked.toFixed(1)}h
+                                    <div className={`mt-2 text-xs text-center font-medium ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                                        Trabalhado: {equipment.shiftB.worked.toFixed(1)}h {equipment.shiftB.worked < 0 ? '(Inválido)' : ''}
                                     </div>
                                 </div>
                             </div>
 
                             <div className="p-4 border-t bg-gray-50 flex justify-end">
                                 <button 
-                                    onClick={() => setShowMobileModal(false)}
+                                    onClick={() => {
+                                        const workedA = equipment.shiftA.worked;
+                                        const workedB = equipment.shiftB.worked;
+                                        
+                                        const hasErrorA = (typeof workedA === 'number') && (workedA < 0 || workedA > 12.01);
+                                        const hasErrorB = (typeof workedB === 'number') && (workedB < 0 || workedB > 12.01);
+                                        
+                                        if (hasErrorA || hasErrorB) {
+                                            alert("⚠️ ERRO: Valores Inválidos!\n\nVerifique se:\n1. O Horímetro Final é menor que o Inicial (Negativo).\n2. O total de horas excede 12h.\n\nCorrija para continuar.");
+                                            return;
+                                        }
+                                        setShowMobileModal(false);
+                                    }}
                                     className="bg-green-600 text-white px-6 py-3 rounded-lg font-bold shadow hover:bg-green-700 w-full text-lg"
                                 >
                                     Concluir Lançamento
@@ -885,6 +964,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         </div>
                     </div>
                 )}
+{/* Modal de bloqueio removido em favor do alert */}
                 </React.Fragment>
             );
         };
@@ -1042,17 +1122,63 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     plainText += '\n';
                 });
 
+                // Calculate General Totals
+                let totalGeral = 0;
+                let ativosGeral = 0;
+                
+                report.groups.forEach(g => {
+                    if (g.items) {
+                        totalGeral += g.items.length;
+                        ativosGeral += g.items.filter(i => i.status === 'ok').length;
+                    }
+                });
+                
+                const paradosGeral = totalGeral - ativosGeral;
+                const dispGeral = totalGeral > 0 ? Math.round((ativosGeral / totalGeral) * 100) : 0;
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+
                 // Prepare HTML content for Word/Excel
                 let htmlContent = `
                     <table style="border-collapse: collapse; font-family: 'Segoe UI', 'Calibri', Arial, sans-serif; width: 700px; border: 1px solid #ddd; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
                         <!-- Header Principal -->
                         <tr>
-                            <td rowspan="${report.groups.reduce((acc, g) => acc + (g.items?.length > 0 ? 1 : 0), 0) + 2}" style="background-color: #2E7D32; color: white; font-weight: bold; text-align: center; vertical-align: middle; width: 40px; border-bottom: 1px solid #1B5E20; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 14px; letter-spacing: 2px;">
+                            <td rowspan="${report.groups.reduce((acc, g) => acc + (g.items?.length > 0 ? 1 : 0), 0) + 3}" style="background-color: #2E7D32; color: white; font-weight: bold; text-align: center; vertical-align: middle; width: 40px; border-bottom: 1px solid #1B5E20; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 14px; letter-spacing: 2px;">
                                 <span style="display: inline-block; transform: rotate(90deg); white-space: nowrap;">USINA ${plant.name.toUpperCase()}</span>
                             </td>
                             <td colspan="3" style="border-bottom: 2px solid #2E7D32; text-align: left; padding: 15px; background-color: #f8f9fa;">
-                                <div style="color: #2E7D32; font-size: 20px; font-weight: bold; margin-bottom: 5px;">EQUIPAMENTOS DE COLHEITA</div>
-                                <div style="color: #666; font-size: 14px;">FAZ. ${data.id} &bull; ${selectedDate.split('-').reverse().join('/')}</div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div style="color: #2E7D32; font-size: 20px; font-weight: bold; margin-bottom: 5px;">EQUIPAMENTOS DE COLHEITA</div>
+                                        <div style="color: #666; font-size: 14px;">FAZ. ${data.id} &bull; ${selectedDate.split('-').reverse().join('/')} às ${timeString}</div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 24px; font-weight: bold; color: ${dispGeral >= 85 ? '#43A047' : (dispGeral >= 70 ? '#F9A825' : '#E53935')};">${dispGeral}%</div>
+                                        <div style="font-size: 10px; color: #888; text-transform: uppercase;">Disponibilidade Geral</div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Resumo Executivo -->
+                        <tr>
+                            <td colspan="3" style="padding: 10px; background-color: #fff; border-bottom: 2px solid #eee;">
+                                <table style="width: 100%; text-align: center; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="border-right: 1px solid #eee; padding: 5px;">
+                                            <div style="font-size: 18px; font-weight: bold; color: #333;">${totalGeral}</div>
+                                            <div style="font-size: 10px; color: #888; text-transform: uppercase;">Total Frota</div>
+                                        </td>
+                                        <td style="border-right: 1px solid #eee; padding: 5px;">
+                                            <div style="font-size: 18px; font-weight: bold; color: #43A047;">${ativosGeral}</div>
+                                            <div style="font-size: 10px; color: #888; text-transform: uppercase;">Operando</div>
+                                        </td>
+                                        <td style="padding: 5px;">
+                                            <div style="font-size: 18px; font-weight: bold; color: #E53935;">${paradosGeral}</div>
+                                            <div style="font-size: 10px; color: #888; text-transform: uppercase;">Parados</div>
+                                        </td>
+                                    </tr>
+                                </table>
                             </td>
                         </tr>
                 `;
@@ -1115,6 +1241,11 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         const statusLabel = isIssue ? '❌' : '✅';
                         const obs = item.obs || '';
                         
+                        // Destaque visual para paradas
+                        const obsStyle = isIssue 
+                            ? 'color: #C62828; font-weight: bold; background-color: #FFEBEE; border-radius: 4px; padding: 2px 6px; display: inline-block;' 
+                            : 'color: #666;';
+
                         htmlContent += `
                                     <tr>
                                         <!-- Frota -->
@@ -1128,8 +1259,10 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                         </td>
                                         
                                         <!-- Motivo (Obs) -->
-                                        <td style="padding: 3px; font-size: 11px; border: none; color: #666; width: auto; text-align: left;">
-                                            ${obs.toUpperCase()}
+                                        <td style="padding: 3px; font-size: 11px; border: none; width: auto; text-align: left;">
+                                            <span style="${obsStyle}">
+                                                ${obs.toUpperCase()}
+                                            </span>
                                         </td>
                                     </tr>
                         `;
@@ -1150,7 +1283,17 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     `;
                 });
 
-                htmlContent += `</table>`;
+                htmlContent += `
+                        <!-- Rodapé -->
+                        <tr>
+                            <td colspan="3" style="padding: 20px; text-align: center; border-top: 2px solid #2E7D32; background-color: #f8f9fa;">
+                                <div style="font-size: 10px; color: #888; margin-bottom: 30px;">Relatório gerado automaticamente pelo Sistema de Gestão de Frotas</div>
+                                <div style="border-top: 1px solid #ccc; width: 200px; margin: 0 auto;"></div>
+                                <div style="font-size: 12px; color: #333; margin-top: 5px;">Responsável Operacional</div>
+                            </td>
+                        </tr>
+                    </table>
+                `;
 
                 const fullHtml = `
                     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -1960,6 +2103,699 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     )}
 
 
+                </div>
+            );
+        };
+
+        const AvailabilityView = ({ plants, selectedPlant }) => {
+            const [file, setFile] = useState(null);
+            const [parsedData, setParsedData] = useState([]);
+            const [processing, setProcessing] = useState(false);
+            const [importDate, setImportDate] = useState(new Date().toISOString().slice(0, 10));
+            const [logs, setLogs] = useState([]);
+            const [geminiKey, setGeminiKey] = useState(localStorage.getItem('horimetro_gemini_key') || 'AIzaSyArtrF26aNyFTx2z8rtrgZFwP4X7YwbaAM');
+            const [useGemini, setUseGemini] = useState(!!localStorage.getItem('horimetro_gemini_key'));
+
+            useEffect(() => {
+                if (geminiKey) {
+                    localStorage.setItem('horimetro_gemini_key', geminiKey);
+                    setUseGemini(true);
+                }
+            }, [geminiKey]);
+
+            const handleFileChange = (e) => {
+                const f = e.target.files[0];
+                if (f) {
+                    setFile(f);
+                    if (useGemini && geminiKey) {
+                        processWithGemini(f);
+                    } else if (f.name.endsWith('.pdf')) {
+                        parsePDF(f);
+                    } else {
+                        parseExcel(f);
+                    }
+                }
+            };
+
+            const processWithGemini = async (f) => {
+                setProcessing(true);
+                setLogs(prev => [...prev, "Iniciando análise com Gemini AI..."]);
+                try {
+                    let textContent = "";
+                    
+                    if (f.name.endsWith('.pdf')) {
+                        const arrayBuffer = await f.arrayBuffer();
+                        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const text = await page.getTextContent();
+                            
+                            // Smart Grouping for AI Context
+                            const items = text.items.map(item => ({
+                                str: item.str,
+                                x: item.transform[4],
+                                y: item.transform[5]
+                            }));
+                            items.sort((a, b) => b.y - a.y);
+                            
+                            const lines = [];
+                            let currentLine = [];
+                            let lastY = null;
+                            items.forEach(item => {
+                                if (lastY === null || Math.abs(item.y - lastY) < 5) {
+                                    currentLine.push(item);
+                                } else {
+                                    lines.push(currentLine.sort((a, b) => a.x - b.x));
+                                    currentLine = [item];
+                                }
+                                lastY = item.y;
+                            });
+                            if (currentLine.length > 0) lines.push(currentLine.sort((a, b) => a.x - b.x));
+                            
+                            textContent += lines.map(line => line.map(i => i.str).join(' ')).join('\n') + "\n";
+                        }
+                    } else {
+                        const data = await f.arrayBuffer();
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                        textContent = XLSX.utils.sheet_to_csv(sheet);
+                    }
+
+                    setLogs(prev => [...prev, `Texto extraído: ${textContent.length} caracteres.`]);
+
+                    if (textContent.length < 50) {
+                        throw new Error("O arquivo parece vazio ou não pôde ser lido corretamente (Texto < 50 caracteres).");
+                    }
+
+                    // Call Gemini API
+                    const prompt = `
+                        Analise este relatório de disponibilidade mecânica (Gatec) - Motivo de Parada por Equipamento.
+                        O relatório é estruturado em blocos por Equipamento (Frota).
+                        
+                        Estrutura do Bloco:
+                        1. Cabeçalho: Código da Frota (ex: "6995").
+                        2. Linhas de Detalhe (Paradas): Contêm Data/Hora Parada, Data/Hora Retorno, Duração (Tempo Fora), Motivo, Disponibilidade Parcial.
+                        3. Linha de Rodapé (Resumo): Começa com "Acumulado" ou "Total" e contém a Disponibilidade Geral do período.
+
+                        TAREFA: Extraia TODAS as linhas relevantes (Detalhes e Resumo).
+                        
+                        Retorne um JSON Array onde cada objeto representa uma linha do relatório:
+                        {
+                            "frota": "string (código do equipamento)",
+                            "data_parada": "string (dd/mm/yyyy hh:mm:ss) ou null",
+                            "data_retorno": "string (dd/mm/yyyy hh:mm:ss) ou null",
+                            "tempo_fora": "string (hh:mm) ou null",
+                            "motivo": "string (descrição LIMPA do motivo, SEM durações no início, ou 'ACUMULADO')",
+                            "disponibilidade": number (decimal 0.0 a 1.0),
+                            "tipo": "string ('detalhe' ou 'resumo')"
+                        }
+
+                        Regras Importantes:
+                        - LIMPEZA DE MOTIVO: Remova durações (ex: "00:00 00:01") que aparecem antes do texto do motivo. Ex: ":00 :00 00:01 00:01 FINAL DE TURNO" deve virar apenas "FINAL DE TURNO".
+                        - TEMPO FORA: Extraia a duração da parada se disponível.
+                        - RESUMO ÚNICO: Se houver múltiplas linhas de resumo (Acumulado, Total, Somatória), use APENAS a linha que contém "Acumulado por Equipamento" como o resumo principal. Ignore as outras linhas de totais redundantes para a mesma frota.
+                        - A disponibilidade deve ser sempre convertida para decimal (ex: 98,8% -> 0.988).
+
+                        Texto do Relatório:
+                        ${textContent.substring(0, 45000)} 
+                    `;
+
+                    const callGeminiModel = async (modelName) => {
+                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: prompt }] }]
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            const errText = await response.text();
+                            throw new Error(`HTTP ${response.status} - ${errText}`);
+                        }
+
+                        const res = await response.json();
+                        if (res.error) throw new Error(res.error.message);
+                        return res;
+                    };
+
+                    let result;
+                    const models = [
+                        'gemini-2.0-flash', 
+                        'gemini-2.0-flash-exp', 
+                        'gemini-1.5-flash', 
+                        'gemini-1.5-pro',
+                        'gemini-1.0-pro'
+                    ];
+                    
+                    for (const model of models) {
+                        try {
+                            setLogs(prev => [...prev, `Tentando modelo ${model}...`]);
+                            result = await callGeminiModel(model);
+                            setLogs(prev => [...prev, `Sucesso com ${model}!`]);
+                            break;
+                        } catch (err) {
+                            console.warn(`Falha com ${model}:`, err);
+                            setLogs(prev => [...prev, `Falha com ${model}: ${err.message}`]);
+                            if (model === models[models.length - 1]) throw new Error("Todos os modelos de IA falharam. Verifique sua chave API ou tente novamente mais tarde.");
+                        }
+                    }
+                    
+                    const rawText = result.candidates[0].content.parts[0].text;
+                    const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                    let json;
+                    try {
+                        json = JSON.parse(jsonStr);
+                    } catch (parseErr) {
+                        throw new Error(`Erro ao ler resposta da IA (JSON Inválido).`);
+                    }
+
+                    // Normalize data structure
+                    const rows = json.map(item => ({
+                        "Conteúdo da Linha": item.motivo === 'ACUMULADO' ? "RESUMO: " + item.frota : `${item.data_parada || ''} - ${item.motivo}`,
+                        "Frota (Detectado)": item.frota,
+                        "Disponibilidade (Detectado)": item.disponibilidade,
+                        "Data Parada": item.data_parada,
+                        "Data Retorno": item.data_retorno,
+                        "Tempo Parado": item.tempo_fora,
+                        "Motivo": item.motivo,
+                        "Tipo": item.tipo
+                    }));
+
+                    setParsedData(rows);
+                    setLogs(prev => [...prev, `Gemini processou ${rows.length} registros com sucesso.`]);
+
+                } catch (e) {
+                    console.error("Erro Gemini:", e);
+                    setLogs(prev => [...prev, `Erro na IA: ${e.message}. Tentando método tradicional aprimorado...`]);
+                    alert(`A IA encontrou um problema: ${e.message}\n\nTentando método de leitura padrão.`);
+                    if (f.name.endsWith('.pdf')) parsePDF(f);
+                    else parseExcel(f);
+                } finally {
+                    setProcessing(false);
+                }
+            };
+
+            const parseExcel = (f) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(sheet);
+                    setParsedData(json);
+                };
+                reader.readAsArrayBuffer(f);
+            };
+
+            const parsePDF = async (f) => {
+                setProcessing(true);
+                try {
+                    const arrayBuffer = await f.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    const rows = [];
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        
+                        // 1. Agrupamento Avançado de Linhas (Smart Line Grouping)
+                        const items = textContent.items.map(item => ({
+                            str: item.str,
+                            x: item.transform[4],
+                            y: item.transform[5],
+                            w: item.width,
+                            h: item.height
+                        }));
+
+                        // Ordenar por Y (descendente - topo para baixo)
+                        items.sort((a, b) => b.y - a.y);
+
+                        const lines = [];
+                        let currentLine = [];
+                        let lastY = null;
+
+                        items.forEach(item => {
+                            // Tolerância dinâmica: se a diferença de Y for pequena (< 4), considera mesma linha
+                            if (lastY === null || Math.abs(item.y - lastY) < 4) {
+                                currentLine.push(item);
+                            } else {
+                                lines.push(currentLine.sort((a, b) => a.x - b.x)); // Ordenar itens da linha por X (esquerda para direita)
+                                currentLine = [item];
+                            }
+                            lastY = item.y;
+                        });
+                        if (currentLine.length > 0) lines.push(currentLine.sort((a, b) => a.x - b.x));
+
+                        // 2. Extração Inteligente de Dados (Pattern Matching & Context)
+                        // Precisamos manter estado para lidar com "Header" (Frota) e "Footer" (Resumo)
+                        let currentFrota = null;
+
+                        lines.forEach(line => {
+                            // Juntar strings da linha
+                            const lineStr = line.map(i => i.str).join(' ');
+                            
+                            // Tokenização: separar por espaços
+                            const parts = lineStr.split(/\s+/).filter(p => p.trim());
+                            
+                            // --- Lógica de Detecção de Estado ---
+                            
+                            // 1. Tentar detectar Frota (Header do Bloco)
+                            // Padrão: Linha curta que começa com número de 3-6 dígitos (Ex: "6995" ou "10 6995")
+                            const potentialFrota = parts.find(p => /^\d{3,6}$/.test(p));
+                            
+                            // Se a linha for curta (< 5 partes) e tiver um número compatível, assume que é um header de frota
+                            // Mas cuidado para não pegar números aleatórios no meio de uma linha longa
+                            if (potentialFrota && parts.length < 10) {
+                                // Verifica se é "isolado" ou se é o primeiro/segundo item
+                                const idx = parts.indexOf(potentialFrota);
+                                if (idx <= 1) {
+                                    currentFrota = potentialFrota;
+                                }
+                            }
+
+                            // 2. Tentar detectar Linha de Resumo (Footer do Bloco)
+                            // Padrão: Contém "Acumulado" ou "Total" E tem um valor de porcentagem/decimal no final
+                            const isSummaryLine = /acumulado|total/i.test(lineStr);
+                            
+                            // 3. Tentar detectar Linha de Detalhe (Parada)
+                            // Padrão: Contém padrão de data/hora (DD/MM/YYYY HH:MM ou DD/MM HH:MM)
+                            const dateTimePattern = /(\d{2}\/\d{2}(?:\/\d{2,4})?\s+\d{2}:\d{2})/;
+                            const hasDateTime = dateTimePattern.test(lineStr);
+
+                            if (isSummaryLine && currentFrota) {
+                                // Evitar duplicatas de resumo para a mesma frota (usar apenas "Acumulado por Equipamento")
+                                // Se já existe um resumo para esta frota, ignoramos os subsequentes (ex: Total Somatória)
+                                const alreadyHasSummary = rows.some(r => r["Frota (Detectado)"] === currentFrota && r["Tipo"] === "resumo");
+                                
+                                // Se a linha for explicitamente "Acumulado por Equipamento", ela deve prevalecer sobre qualquer outra
+                                const isPrioritySummary = lineStr.includes("Acumulado por Equipamento");
+
+                                if (alreadyHasSummary && !isPrioritySummary) {
+                                    // Pular linhas de totais secundários
+                                    return;
+                                }
+
+                                // Se encontrarmos a linha prioritária e já tivermos um resumo (que não era prioritário), removemos o antigo
+                                if (alreadyHasSummary && isPrioritySummary) {
+                                    const idx = rows.findIndex(r => r["Frota (Detectado)"] === currentFrota && r["Tipo"] === "resumo");
+                                    if (idx !== -1) rows.splice(idx, 1);
+                                }
+
+                                // Tentar extrair a disponibilidade desta linha
+                                let disp = null;
+                                
+                                // Estratégia: Pegar o último número da linha que pareça uma porcentagem ou decimal alto (>50)
+                                for (let j = parts.length - 1; j >= 0; j--) {
+                                    let p = parts[j];
+                                    // Remove símbolos
+                                    p = p.replace('%', '');
+                                    
+                                    // Tenta converter (suporta vírgula e ponto)
+                                    let valStr = p.replace(',', '.');
+                                    if (!isNaN(valStr) && valStr.trim() !== '') {
+                                        let val = parseFloat(valStr);
+                                        // Validação heurística: Disponibilidade geralmente é alta (ex: > 50) ou é 0
+                                        // Se for um número muito pequeno (ex: 0.05) pode ser hora
+                                        // Mas se tiver "%" no original, é certeza
+                                        if (parts[j].includes('%') || (val > 0 && val <= 100)) {
+                                            disp = val;
+                                            break; 
+                                        }
+                                    }
+                                }
+                                
+                                if (disp !== null) {
+                                    rows.push({
+                                        "Conteúdo da Linha": "RESUMO: " + lineStr,
+                                        "Frota (Detectado)": currentFrota,
+                                        "Disponibilidade (Detectado)": disp,
+                                        "Data Parada": "",
+                                        "Data Retorno": "",
+                                        "Tempo Parado": "",
+                                        "Motivo": "ACUMULADO/TOTAL",
+                                        "Tipo": "resumo"
+                                    });
+                                }
+                            } else if (hasDateTime && currentFrota) {
+                                // É uma linha de detalhe
+                                // Tentar extrair datas e motivo
+                                const dates = lineStr.match(/(\d{2}\/\d{2}(?:\/\d{4})?\s+\d{2}:\d{2})/g) || [];
+                                const dataParada = dates[0] || "";
+                                const dataRetorno = dates[1] || "";
+                                
+                                // Motivo é o resto do texto (simplificado)
+                                let motivo = lineStr;
+                                // Remove as datas encontradas
+                                dates.forEach(d => motivo = motivo.replace(d, ''));
+                                // Remove números de ID soltos no início (ex: ID da parada)
+                                motivo = motivo.replace(/^\s*\d+\s+/, '').trim();
+                                // Remove a frota se aparecer
+                                motivo = motivo.replace(currentFrota, '').trim();
+                                // Remove durações no início (padrão 00:00 ou :00) que aparecem antes do texto
+                                // Ex: ":00 :00 00:01 00:01 FINAL DE TURNO"
+                                motivo = motivo.replace(/^[:\d\s]+/, '').trim();
+                                // Remove porcentagem/números soltos no final da string (ex: "99,79" ou "99.79" ou "99,79%")
+                                // Geralmente aparece como um número de 2 ou 3 dígitos, vírgula/ponto, 1 ou 2 casas decimais
+                                motivo = motivo.replace(/\s+\d{1,3}[.,]\d{1,2}%?$/, '').trim();
+
+                                // Tentar extrair "Tempo Fora" (Duração)
+                                // Geralmente é um padrão HH:MM que sobrou no inicio ou meio, mas como já limpamos, vamos tentar pegar do original
+                                // Padrão: :00 :00 [Duração Parada] [Duração Acumulada?] Texto
+                                // Vamos pegar todos os padrões de tempo HH:MM na linha original que NÃO SÃO as datas
+                                const timePattern = /\b\d{2}:\d{2}\b/g;
+                                const allTimes = lineStr.match(timePattern) || [];
+                                // Filtrar os que já foram usados nas datas
+                                const usedInDates = dates.join(' ');
+                                const durationCandidates = allTimes.filter(t => !usedInDates.includes(t));
+                                // Assumir que o primeiro candidato restante é a duração da parada
+                                const tempoParado = durationCandidates[0] || "";
+
+                                rows.push({
+                                    "Conteúdo da Linha": lineStr,
+                                    "Frota (Detectado)": currentFrota,
+                                    "Disponibilidade (Detectado)": 0,
+                                    "Data Parada": dataParada,
+                                    "Data Retorno": dataRetorno,
+                                    "Tempo Parado": tempoParado,
+                                    "Motivo": motivo,
+                                    "Tipo": "detalhe"
+                                });
+                            }
+                            
+                            // --- Lógica Legada (Compatibilidade com formato de linha única) ---
+                            if (!isSummaryLine && parts.length > 1) {
+                                let frotaInline = null;
+                                let dispInline = null;
+                                
+                                // ... (Lógica antiga mantida se necessário, mas a prioridade é o bloco)
+                                // Se já detectamos via bloco, ignoramos a linha única para não duplicar, 
+                                // ou usamos para complementar se a lógica de bloco falhar.
+                            }
+                        });
+                            // Código legado removido
+                    }
+                    setParsedData(rows);
+                    if (rows.length === 0) {
+                        alert("Nenhum dado reconhecido. Verifique se o PDF contém texto selecionável (não é imagem) e se segue o padrão de colunas.");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("Erro ao processar PDF: " + e.message);
+                } finally {
+                    setProcessing(false);
+                }
+            };
+
+            const processImport = async () => {
+                setProcessing(true);
+                setLogs([]);
+                const newLogs = [];
+
+                try {
+                    const tableName = selectedPlant === 'cambui' ? 'daily_reports_cambui' : 
+                                    selectedPlant === 'panorama' ? 'daily_reports_panorama' :
+                                    selectedPlant === 'vale-verdao' ? 'daily_reports_vale_verdao' :
+                                    selectedPlant === 'floresta' ? 'daily_reports_floresta' : 'daily_reports';
+
+                    // Fetch existing reports for the date to map frotas to frentes
+                    const { data: reports, error } = await supabaseClient
+                        .from(tableName)
+                        .select('*')
+                        .eq('date', importDate);
+
+                    if (error) throw error;
+
+                    const reportMap = {}; 
+                    reports.forEach(r => reportMap[r.frente_id] = r);
+
+                    let updatedCount = 0;
+
+                    for (const row of parsedData) {
+                        // Smart column detection
+                        const keys = Object.keys(row);
+                        
+                        // Handle Excel vs PDF keys
+                        let frota, disp;
+                        
+                        if (file.name.endsWith('.pdf')) {
+                            frota = row["Frota (Detectado)"];
+                            disp = row["Disponibilidade (Detectado)"];
+                        } else {
+                            const frotaKey = keys.find(k => /frota|equipamento|cod/i.test(k)) || keys[0];
+                            const dispKey = keys.find(k => /disponibilidade|disp|%/i.test(k));
+                            frota = row[frotaKey];
+                            disp = dispKey ? row[dispKey] : null;
+                        }
+                        
+                        // Normalize Disp
+                        if (disp && typeof disp === 'string') {
+                            disp = parseFloat(disp.replace(',', '.').replace('%', ''));
+                            if (disp > 1) disp = disp / 100; // Assuming it was 95.5 -> 0.955
+                        } else if (disp && typeof disp === 'number') {
+                            if (disp > 1) disp = disp / 100;
+                        }
+
+                        if (!frota) continue;
+
+                        let foundReport = null;
+                        let foundItem = null;
+
+                        for (const frenteId in reportMap) {
+                            const report = reportMap[frenteId];
+                            const data = report.report_data;
+                            if (data.groups) {
+                                for (const g of data.groups) {
+                                    const item = g.items.find(i => String(i.frota).trim() == String(frota).trim());
+                                    if (item) {
+                                        foundReport = report;
+                                        foundItem = item;
+                                        break;
+                                    }
+                                }
+                            } else if (data.frotas) {
+                                // Old structure support
+                                const item = data.frotas.find(f => String(f.id).trim() == String(frota).trim());
+                                if (item) {
+                                    foundReport = report;
+                                    foundItem = item;
+                                    break;
+                                }
+                            }
+                            if (foundReport) break;
+                        }
+
+                        if (foundReport && foundItem) {
+                            // Se for linha de Resumo/Acumulado, atualiza a disponibilidade principal
+                            if (!row.Tipo || row.Tipo === 'resumo' || row["Conteúdo da Linha"].includes('Acumulado')) {
+                                foundItem.gatec_availability = disp;
+                                updatedCount++;
+                                newLogs.push(`Frota ${frota}: Disponibilidade atualizada para ${(disp * 100).toFixed(1)}%`);
+                            }
+                            
+                            // Sempre armazena os dados brutos da linha para histórico/detalhes
+                            // Se já existir gatec_data como array, adiciona. Se não, cria array.
+                            if (!foundItem.gatec_details) foundItem.gatec_details = [];
+                            
+                            // Verifica duplicidade antes de adicionar (opcional, mas bom para evitar repetecos no reprocessamento)
+                            const exists = foundItem.gatec_details.some(d => 
+                                d.data_parada === row["Data Parada"] && 
+                                d.motivo === row["Motivo"]
+                            );
+                            
+                            if (!exists) {
+                                foundItem.gatec_details.push(row);
+                            }
+                            
+                            foundItem.gatec_data = row; // Mantém compatibilidade com versão anterior
+                        }
+                    }
+
+                    // Save logs to dedicated table
+                    const logsToInsert = parsedData.map(row => ({
+                        plant: selectedPlant,
+                        reference_date: importDate,
+                        frota: row["Frota (Detectado)"],
+                        motivo: row["Motivo"],
+                        data_parada: row["Data Parada"],
+                        data_retorno: row["Data Retorno"],
+                        tempo_parado: row["Tempo Parado"],
+                        tipo: row["Tipo"],
+                        disponibilidade: row["Disponibilidade (Detectado)"]
+                    }));
+
+                    if (logsToInsert.length > 0) {
+                        const { error: logsError } = await supabaseClient
+                            .from('availability_logs')
+                            .insert(logsToInsert);
+                        
+                        if (logsError) {
+                            console.error("Erro ao salvar logs:", logsError);
+                            newLogs.push(`Aviso: Não foi possível salvar na tabela 'availability_logs' (Verifique se ela existe). Erro: ${logsError.message}`);
+                        } else {
+                            newLogs.push(`${logsToInsert.length} registros salvos na tabela de histórico detalhado.`);
+                        }
+                    }
+
+                    // Save updates
+                    for (const frenteId in reportMap) {
+                        const report = reportMap[frenteId];
+                        const { error: updateError } = await supabaseClient
+                            .from(tableName)
+                            .update({ report_data: report.report_data })
+                            .eq('id', report.id);
+                            
+                        if (updateError) {
+                             newLogs.push(`Erro ao salvar frente ${frenteId}: ${updateError.message}`);
+                        }
+                    }
+
+                    setLogs(prev => [...prev, ...newLogs, `Processo concluído. ${updatedCount} frotas atualizadas.`]);
+                    alert(`Processo concluído! ${updatedCount} frotas atualizadas.`);
+
+                } catch (err) {
+                    console.error(err);
+                    setLogs(prev => [...prev, `Erro Crítico: ${err.message}`]);
+                    alert(`Erro: ${err.message}`);
+                } finally {
+                    setProcessing(false);
+                }
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <Icons.Upload size={20} className="text-orange-600" />
+                                Importar Arquivo Gatec
+                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800 border border-blue-200">
+                                    Unidade: {plants && plants[selectedPlant] ? plants[selectedPlant].name : selectedPlant}
+                                </span>
+                            </h3>
+                            <div className="text-xs text-gray-500">
+                                Formatos suportados: .xlsx, .xls, .pdf
+                            </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Data de Referência</label>
+                                <input 
+                                    type="date" 
+                                    value={importDate}
+                                    onChange={e => setImportDate(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-orange-500 outline-none"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Data dos relatórios a atualizar.</p>
+                            </div>
+                            
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Arquivo de Disponibilidade</label>
+                                <div className="relative mb-3">
+                                    <input 
+                                        type="file" 
+                                        accept=".xlsx, .xls, .pdf"
+                                        onChange={handleFileChange}
+                                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-orange-500 outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                                    />
+                                </div>
+                                <div className="bg-orange-50 p-3 rounded-lg border border-orange-100">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <input 
+                                            type="checkbox"
+                                            checked={useGemini}
+                                            onChange={e => setUseGemini(e.target.checked)}
+                                            className="form-checkbox text-orange-600 h-4 w-4"
+                                        />
+                                        <label className="text-sm font-bold text-gray-800">Usar Gemini AI (Google) para Reconhecimento Avançado</label>
+                                    </div>
+                                    {useGemini && (
+                                        <div className="mt-2 animate-fade-in">
+                                            <label className="block text-xs font-bold text-gray-600 mb-1">Chave de API do Gemini (Google AI Studio)</label>
+                                            <input 
+                                                type="password" 
+                                                value={geminiKey}
+                                                onChange={e => setGeminiKey(e.target.value)}
+                                                placeholder="Cole sua API Key aqui..."
+                                                className="w-full border border-orange-200 rounded-md p-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none bg-white"
+                                            />
+                                            <p className="text-[10px] text-gray-500 mt-1">
+                                                Necessário para usar a IA. Obtenha em: <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline">Google AI Studio</a>. A chave fica salva no seu navegador.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {parsedData.length > 0 && (
+                            <div className="mb-6 animate-fade-in">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h4 className="font-bold text-sm text-gray-600">Pré-visualização ({parsedData.length} registros)</h4>
+                                </div>
+                                <div className="max-h-60 overflow-auto border rounded-lg bg-gray-50">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-gray-100 sticky top-0 text-gray-600 font-bold">
+                                            <tr>
+                                                <th className="p-2 border-b text-left">Frota</th>
+                                                <th className="p-2 border-b text-left">Motivo</th>
+                                                <th className="p-2 border-b text-left">Data Parada</th>
+                                                <th className="p-2 border-b text-left">Data Retorno</th>
+                                                <th className="p-2 border-b text-left">Tempo Parado</th>
+                                                <th className="p-2 border-b text-left">Disp. (%)</th>
+                                                <th className="p-2 border-b text-left">Tipo</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 bg-white">
+                                            {parsedData.slice(0, 50).map((row, i) => (
+                                                <tr key={i} className={`hover:bg-gray-50 ${row["Tipo"] === 'resumo' ? 'bg-orange-50 font-semibold' : ''}`}>
+                                                    <td className="p-2 truncate">{row["Frota (Detectado)"]}</td>
+                                                    <td className="p-2 truncate max-w-[200px]" title={row["Motivo"]}>{row["Motivo"]}</td>
+                                                    <td className="p-2 truncate">{row["Data Parada"]}</td>
+                                                    <td className="p-2 truncate">{row["Data Retorno"]}</td>
+                                                    <td className="p-2 truncate">{row["Tempo Parado"]}</td>
+                                                    <td className="p-2 truncate">{row["Disponibilidade (Detectado)"]}</td>
+                                                    <td className="p-2 truncate">{row["Tipo"]}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1 italic">Exibindo os primeiros 10 registros para conferência.</p>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end pt-4 border-t border-gray-100">
+                            <button 
+                                onClick={processImport}
+                                disabled={!parsedData.length || processing}
+                                className={`px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all flex items-center gap-2 ${!parsedData.length || processing ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700 hover:shadow-xl active:scale-95'}`}
+                            >
+                                {processing ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Processando...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Icons.Save size={18} />
+                                        <span>Processar e Salvar</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {logs.length > 0 && (
+                        <div className="bg-gray-900 text-green-400 p-4 rounded-xl shadow-lg font-mono text-xs max-h-60 overflow-auto border border-gray-800">
+                            <h4 className="text-white font-bold mb-2 sticky top-0 bg-gray-900 pb-2 border-b border-gray-800">Log de Processamento</h4>
+                            {logs.map((log, i) => (
+                                <div key={i} className="mb-1 border-b border-gray-800/50 pb-1 last:border-0">{log}</div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -3483,7 +4319,10 @@ on conflict (id) do nothing;`)}
             const [newFrota, setNewFrota] = useState('');
             const [newGroup, setNewGroup] = useState('Colhedoras');
             const [error, setError] = useState(null);
-            const [activeFrente, setActiveFrente] = useState('F4001'); // Default Frente
+            const [activeFrente, setActiveFrente] = useState(''); // Init empty
+            const [frentes, setFrentes] = useState([]); // Init empty
+            const [targetFrente, setTargetFrente] = useState('');
+            const [isNewFrente, setIsNewFrente] = useState(false);
 
             const predefinedGroups = [
                 'Colhedoras', 
@@ -3492,27 +4331,72 @@ on conflict (id) do nothing;`)}
                 'Trator Cobridor',
                 'Trator Transbordo', 
                 'Trator Plantadora', 
-                'Caminhão'
+                'Caminhões'
             ];
+
+            useEffect(() => {
+                fetchFrentes();
+            }, [plantId]);
 
             useEffect(() => {
                 fetchEquipments();
             }, [plantId, activeFrente]); // Re-fetch when plant or frente changes
 
+            const fetchFrentes = async () => {
+                let tableName = 'equipments_cambui';
+                if (plantId === 'panorama') tableName = 'equipments_panorama';
+                else if (plantId === 'vale-verdao') tableName = 'equipments_vale_verdao';
+                else if (plantId === 'floresta') tableName = 'equipments_floresta';
+
+                const { data, error } = await supabaseClient
+                    .from(tableName)
+                    .select('frente')
+                    .range(0, 9999);
+                
+                if (data) {
+                    if (data.length === 0) {
+                        setFrentes(['F4001']);
+                        setActiveFrente('F4001');
+                        return;
+                    }
+
+                    // Normaliza nomes (trim) e trata nulos como 'Geral'
+                    const uniqueFrentes = [...new Set(
+                        data.map(item => item.frente ? item.frente.trim() : "Geral")
+                            .filter(f => f !== "") // Remove strings vazias se houver
+                    )].sort();
+
+                    if (uniqueFrentes.length > 0) {
+                        setFrentes(uniqueFrentes);
+                        if (!activeFrente || !uniqueFrentes.includes(activeFrente)) {
+                            setActiveFrente(uniqueFrentes[0]);
+                        }
+                    } else {
+                        setFrentes(['Geral']);
+                        setActiveFrente('Geral');
+                    }
+                }
+            };
+
             const fetchEquipments = async () => {
+                if (!activeFrente) return; 
                 setLoading(true);
                 let tableName = 'equipments_cambui';
                 if (plantId === 'panorama') tableName = 'equipments_panorama';
                 else if (plantId === 'vale-verdao') tableName = 'equipments_vale_verdao';
                 else if (plantId === 'floresta') tableName = 'equipments_floresta';
                 
-                // Try to filter by frente. Note: column 'frente' must exist.
-                // If not, we might need to rely on client-side filtering if we used a shared table without column?
-                // But user asked to separate them. Let's assume we use a 'frente' column.
-                const { data, error } = await supabaseClient
+                let query = supabaseClient
                     .from(tableName)
-                    .select('*')
-                    .eq('frente', activeFrente) // Filter by Frente
+                    .select('*');
+
+                if (activeFrente === 'Geral') {
+                    query = query.or('frente.is.null,frente.eq.Geral,frente.eq.""');
+                } else {
+                    query = query.eq('frente', activeFrente);
+                }
+
+                const { data, error } = await query
                     .order('group_name', { ascending: true })
                     .order('frota', { ascending: true });
 
@@ -3534,6 +4418,11 @@ on conflict (id) do nothing;`)}
 
             const handleAdd = async () => {
                 if (!newFrota) return;
+                if (!targetFrente) {
+                    alert("Por favor, selecione ou digite uma Frente de Trabalho.");
+                    return;
+                }
+
                 let tableName = 'equipments_cambui';
                 if (plantId === 'panorama') tableName = 'equipments_panorama';
                 else if (plantId === 'vale-verdao') tableName = 'equipments_vale_verdao';
@@ -3541,13 +4430,20 @@ on conflict (id) do nothing;`)}
                 
                 const { error } = await supabaseClient
                     .from(tableName)
-                    .insert([{ frota: newFrota, group_name: newGroup, frente: activeFrente }]);
+                    .insert([{ frota: newFrota, group_name: newGroup, frente: targetFrente }]);
 
                 if (error) {
                     alert('Erro ao adicionar: ' + error.message);
                 } else {
                     setShowAddModal(false);
                     setNewFrota('');
+                    
+                    // Se foi uma nova frente, atualiza a lista de frentes e muda para ela
+                    if (isNewFrente) {
+                        await fetchFrentes();
+                        setActiveFrente(targetFrente);
+                    }
+                    
                     fetchEquipments();
                 }
             };
@@ -3583,23 +4479,24 @@ on conflict (id) do nothing;`)}
                     <div className="flex justify-between items-center mb-6">
                         <div className="flex items-center gap-4">
                             <h2 className="text-2xl font-bold text-gray-800">Gestão de Equipamentos</h2>
-                            <div className="flex bg-gray-200 rounded p-1">
-                                <button
-                                    onClick={() => setActiveFrente('F4001')}
-                                    className={`px-3 py-1 rounded text-sm font-bold ${activeFrente === 'F4001' ? 'bg-white shadow text-green-700' : 'text-gray-600 hover:bg-gray-300'}`}
-                                >
-                                    Frente 4001
-                                </button>
-                                <button
-                                    onClick={() => setActiveFrente('F4002')}
-                                    className={`px-3 py-1 rounded text-sm font-bold ${activeFrente === 'F4002' ? 'bg-white shadow text-green-700' : 'text-gray-600 hover:bg-gray-300'}`}
-                                >
-                                    Frente 4002
-                                </button>
+                            <div className="flex bg-gray-200 rounded p-1 overflow-x-auto max-w-2xl">
+                                {frentes.map(frente => (
+                                    <button
+                                        key={frente}
+                                        onClick={() => setActiveFrente(frente)}
+                                        className={`px-3 py-1 rounded text-sm font-bold whitespace-nowrap ${activeFrente === frente ? 'bg-white shadow text-green-700' : 'text-gray-600 hover:bg-gray-300'}`}
+                                    >
+                                        {frente}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                         <button 
-                            onClick={() => setShowAddModal(true)}
+                            onClick={() => {
+                                setTargetFrente(activeFrente);
+                                setIsNewFrente(false);
+                                setShowAddModal(true);
+                            }}
                             className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 flex items-center gap-2"
                         >
                             <Icons.Plus size={20} />
@@ -3654,6 +4551,52 @@ on conflict (id) do nothing;`)}
                                 
                                 <div className="space-y-4">
                                     <div>
+                                        <label className="block text-sm font-bold mb-1 text-gray-700">Frente de Trabalho</label>
+                                        <div className="flex gap-2">
+                                            {!isNewFrente ? (
+                                                <select 
+                                                    value={targetFrente}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === 'NEW') {
+                                                            setIsNewFrente(true);
+                                                            setTargetFrente('');
+                                                        } else {
+                                                            setTargetFrente(e.target.value);
+                                                        }
+                                                    }}
+                                                    className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-blue-500"
+                                                >
+                                                    {frentes.map(f => (
+                                                        <option key={f} value={f}>{f}</option>
+                                                    ))}
+                                                    <option value="NEW">+ Nova Frente...</option>
+                                                </select>
+                                            ) : (
+                                                <div className="flex w-full gap-2">
+                                                    <input 
+                                                        type="text"
+                                                        value={targetFrente}
+                                                        onChange={(e) => setTargetFrente(e.target.value)}
+                                                        className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-blue-500"
+                                                        placeholder="Ex: Soja, Frente 4001"
+                                                        autoFocus
+                                                    />
+                                                    <button 
+                                                        onClick={() => {
+                                                            setIsNewFrente(false);
+                                                            setTargetFrente(activeFrente);
+                                                        }}
+                                                        className="px-2 text-gray-500 hover:text-red-500"
+                                                        title="Cancelar nova frente"
+                                                    >
+                                                        <Icons.X size={20} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
                                         <label className="block text-sm font-bold mb-1 text-gray-700">Grupo</label>
                                         <select 
                                             value={newGroup}
@@ -3705,6 +4648,7 @@ on conflict (id) do nothing;`)}
             const [userProfile, setUserProfile] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
             const [showAdminPanel, setShowAdminPanel] = useState(false);
+            const [mobileConfirmData, setMobileConfirmData] = useState(null);
 
             // App Mode (APK) - Detect via Capacitor or URL param
             const isAppMode = useMemo(() => window.Capacitor !== undefined || window.location.search.includes('mode=app'), []);
@@ -3974,6 +4918,37 @@ on conflict (id) do nothing;`)}
             // Manual Save Function
             const handleSave = async () => {
                 if (!allData[activeFrenteId]) return;
+
+                // --- VALIDATION START ---
+                const currentReport = allData[activeFrenteId][selectedDate];
+                if (currentReport) {
+                    let errorMsg = "";
+                    currentReport.groups.forEach(group => {
+                        group.items.forEach(item => {
+                            // Check for invalid numbers (negative worked hours or > 12h)
+                            // We use a small tolerance for floating point, but essentially < 0 is bad.
+                            const workedA = item.shiftA.worked;
+                            const workedB = item.shiftB.worked;
+                            
+                            if (typeof workedA === 'number') {
+                                if (workedA < 0) errorMsg = `Frota ${item.frota} (Turno A): Horas Negativas (${workedA.toFixed(1)}h)!`;
+                                if (workedA > 12.01) errorMsg = `Frota ${item.frota} (Turno A): Excede 12h (${workedA.toFixed(1)}h)!`;
+                            }
+                            
+                            if (typeof workedB === 'number') {
+                                if (workedB < 0) errorMsg = `Frota ${item.frota} (Turno B): Horas Negativas (${workedB.toFixed(1)}h)!`;
+                                if (workedB > 12.01) errorMsg = `Frota ${item.frota} (Turno B): Excede 12h (${workedB.toFixed(1)}h)!`;
+                            }
+                        });
+                    });
+
+                    if (errorMsg) {
+                        alert(`⚠️ IMPOSSÍVEL SALVAR\n\nErro encontrado: ${errorMsg}\n\nVerifique se:\n1. O Horímetro Final é menor que o Inicial.\n2. O total de horas excede 12h.\n\nCorrija antes de salvar.`);
+                        return;
+                    }
+                }
+                // --- VALIDATION END ---
+
                 setIsSaving(true);
                 setNotification({ message: 'Sincronizando com o banco de dados...', type: 'info' });
                 
@@ -4777,17 +5752,33 @@ on conflict (id) do nothing;`)}
             const playErrorSound = () => {
                 try {
                     const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    // Sirene / Alerta Intenso
                     const osc = ctx.createOscillator();
                     const gain = ctx.createGain();
+                    
                     osc.connect(gain);
                     gain.connect(ctx.destination);
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(220, ctx.currentTime);
-                    osc.frequency.linearRampToValueAtTime(110, ctx.currentTime + 0.3);
-                    gain.gain.setValueAtTime(0.5, ctx.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-                    osc.start();
-                    osc.stop(ctx.currentTime + 0.3);
+                    
+                    osc.type = 'square'; // Som mais "agressivo"
+                    
+                    const now = ctx.currentTime;
+                    
+                    // Padrão de Sirene (Sobe e Desce)
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.linearRampToValueAtTime(900, now + 0.2);
+                    osc.frequency.linearRampToValueAtTime(600, now + 0.4);
+                    osc.frequency.linearRampToValueAtTime(900, now + 0.6);
+                    osc.frequency.linearRampToValueAtTime(600, now + 0.8);
+                    
+                    // Volume constante e depois fade out
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.setValueAtTime(0.3, now + 0.8);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
+                    
+                    osc.start(now);
+                    osc.stop(now + 1.0);
+
                 } catch (e) {
                     console.error("Audio context error", e);
                 }
@@ -4859,42 +5850,34 @@ on conflict (id) do nothing;`)}
                                      const item = group ? group.items.find(i => i.id === itemId) : null;
                                      
                                      if (item && item.frota) {
-                                         // 1. Check against Previous Reading
-                                         const prevReading = lastReadings[item.frota]?.value;
-                                         if (prevReading !== undefined && prevReading !== null) {
-                                             if (val < prevReading) {
-                                                 playErrorSound();
-                                                 alert(`ATENÇÃO: Valor inválido!\nO horímetro (${val}) não pode ser menor que o fechamento anterior (${prevReading}).`);
-                                                 return;
-                                             }
-                                         }
-
-                                         // 2. Check Consistency (Final >= Initial)
+                                         // 1. Check against Previous Reading - REMOVED TO ALLOW TYPING
+                                         // 2. Check Consistency (Final >= Initial) - REMOVED TO ALLOW TYPING
+                                         
                                          const parts = field.split('.');
                                          if (parts.length === 2) {
                                              const shiftName = parts[0]; 
                                              const type = parts[1];
-                                             
-                                             if (type === 'final') {
-                                                 const currentInitial = item[shiftName].initial;
-                                                 if (currentInitial !== null && val < currentInitial) {
-                                                     playErrorSound();
-                                                     alert(`ATENÇÃO: Valor inválido!\nO horímetro final (${val}) não pode ser menor que o inicial (${currentInitial}).`);
-                                                     return;
-                                                 }
-                                             } else if (type === 'initial') {
-                                                 const currentFinal = item[shiftName].final;
-                                                 if (currentFinal !== null && val > currentFinal) {
-                                                     playErrorSound();
-                                                     alert(`ATENÇÃO: Valor inválido!\nO horímetro inicial (${val}) não pode ser maior que o final (${currentFinal}).`);
-                                                     return;
-                                                 }
-                                             }
-                                         }
-                                     }
-                                 }
+ 
+                                            // 3. Check 12 Hour Limit
+                                            let newInitial = item[shiftName].initial;
+                                            let newFinal = item[shiftName].final;
+                                            
+                                            if (type === 'initial') newInitial = val;
+                                            if (type === 'final') newFinal = val;
+                                            
+                                            if (newInitial !== null && newFinal !== null) {
+                                                const diff = newFinal - newInitial;
+                                                if (diff > 12) {
+                                                    playErrorSound();
+                                                    setMobileConfirmData({ groupId, itemId, field, value: val, diff, shiftName });
+                                                    return; // Block update until confirmed
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
-                                 updateEquipment(groupId, itemId, field, val);
+                                updateEquipment(groupId, itemId, field, val);
                             }} 
                             onBack={handleMobileBack} 
                             onSave={handleSave} 
@@ -4924,6 +5907,33 @@ on conflict (id) do nothing;`)}
                             />
                         )}
                         {mobileContent}
+                        {mobileConfirmData && (
+                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4 animate-fade-in">
+                                <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden border-2 border-red-600">
+                                    <div className="bg-red-600 p-4 text-white flex items-center">
+                                        <Icons.AlertTriangle size={24} className="mr-2" />
+                                        <h3 className="font-bold text-lg">Bloqueio: Excesso de Horas</h3>
+                                    </div>
+                                    <div className="p-6 text-center">
+                                        <p className="text-gray-800 text-lg mb-4">
+                                            A diferença lançada é de <strong className="text-red-600 text-xl">{mobileConfirmData.diff.toFixed(1)} horas</strong><br/>
+                                            no {mobileConfirmData.shiftName === 'shiftA' ? 'Turno A' : 'Turno B'}.
+                                        </p>
+                                        <p className="text-gray-600 font-bold">
+                                            Valor não permitido! O limite máximo é de 12 horas.
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-gray-50 flex justify-center">
+                                        <button 
+                                            onClick={() => setMobileConfirmData(null)}
+                                            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded shadow"
+                                        >
+                                            Corrigir Valor
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -4985,6 +5995,17 @@ on conflict (id) do nothing;`)}
                                                 className="form-radio text-blue-600 h-4 w-4"
                                             />
                                             <span className="text-gray-800">Distribuidora</span>
+                                        </label>
+                                        <label className="flex items-center space-x-2 cursor-pointer">
+                                            <input 
+                                                type="radio" 
+                                                name="frenteType"
+                                                value="caminhoes"
+                                                checked={newFrenteType === 'caminhoes'}
+                                                onChange={(e) => setNewFrenteType(e.target.value)}
+                                                className="form-radio text-orange-600 h-4 w-4"
+                                            />
+                                            <span className="text-gray-800">Caminhões</span>
                                         </label>
                                     </div>
                                 </div>
@@ -5056,6 +6077,13 @@ on conflict (id) do nothing;`)}
                                             >
                                                 <Icons.Truck size={18} />
                                                 <span>Equipamentos</span>
+                                            </button>
+                                            <button 
+                                                onClick={() => setActiveTab('availability')}
+                                                className={`px-3 py-1 rounded flex items-center space-x-1 ${activeTab === 'availability' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+                                            >
+                                                <Icons.Wrench size={18} />
+                                                <span>Disponibilidade</span>
                                             </button>
                                         </div>
                                     </>
@@ -5142,7 +6170,9 @@ on conflict (id) do nothing;`)}
                     </div>
 
                     <div className="max-w-7xl mx-auto p-4">
-                        {activeTab === 'equipments' ? (
+                        {activeTab === 'availability' ? (
+                            <AvailabilityView plants={PLANTS} selectedPlant={plantId} />
+                        ) : activeTab === 'equipments' ? (
                             <EquipmentPanel plantId={plantId} plant={plant} />
                         ) : !activeFrenteId && view === 'entry' ? (
                              <div className="bg-white rounded-xl shadow-lg p-12 text-center mt-6">
