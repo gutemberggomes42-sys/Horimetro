@@ -2540,7 +2540,14 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             const [file, setFile] = useState(null);
             const [parsedData, setParsedData] = useState([]);
             const [processing, setProcessing] = useState(false);
-            const [importDate, setImportDate] = useState(new Date().toISOString().slice(0, 10));
+            // Fix: Initialize with LOCAL date instead of UTC to avoid previous day issue
+            const [importDate, setImportDate] = useState(() => {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            });
             const [logs, setLogs] = useState([]);
             const [geminiKey, setGeminiKey] = useState(localStorage.getItem('horimetro_gemini_key') || '');
             const [deepseekKey, setDeepseekKey] = useState(localStorage.getItem('horimetro_deepseek_key') || 'sk-a3ae231c8f0a4b9a9d9ac8d53256e999');
@@ -2582,6 +2589,16 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     setUseGemini(true);
                 }
             }, [geminiKey]);
+
+            // Date formatter to avoid UTC shift
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '-';
+                if (dateStr.length === 10 && dateStr.includes('-')) {
+                    const [y, m, d] = dateStr.split('-');
+                    return `${d}/${m}/${y}`;
+                }
+                return new Date(dateStr).toLocaleDateString('pt-BR');
+            };
 
             // --- History Logic ---
             const fetchHistory = async () => {
@@ -4017,7 +4034,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                     const displayItem = group.summary || group.details[0];
                                                     return (
                                                         <tr key={i} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setSelectedHistoryFleet(group)}>
-                                                            <td className="p-3 text-gray-600">{new Date(group.date).toLocaleDateString('pt-BR')}</td>
+                                                            <td className="p-3 text-gray-600">{formatDate(group.date)}</td>
                                                             <td className="p-3 font-bold text-gray-800">{group.frota}</td>
                                                             <td className="p-3">
                                                                 <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
@@ -4052,7 +4069,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                     <div className="flex justify-between items-center mb-4">
                                         <div>
                                             <p className="text-gray-500 text-xs">Data Referência</p>
-                                            <p className="font-bold">{new Date(selectedHistoryFleet.date).toLocaleDateString('pt-BR')}</p>
+                                            <p className="font-bold">{formatDate(selectedHistoryFleet.date)}</p>
                                         </div>
                                         <div>
                                             <p className="text-gray-500 text-xs text-right">Frota</p>
@@ -6716,6 +6733,19 @@ on conflict (id) do nothing;`)}
                                 timestamp: new Date().toISOString()
                             });
                         } else {
+                            // Compare report status
+                            if (report.status !== oldReport.status) {
+                                logEntries.push({
+                                    plant_id: plantId,
+                                    frente_id: activeFrenteId,
+                                    date: date,
+                                    user_email: currentUser,
+                                    action: 'UPDATE_STATUS',
+                                    details: `Alterou status do relatório: ${oldReport.status === 'completed' ? 'Concluído' : 'Pendente'} -> ${report.status === 'completed' ? 'Concluído' : 'Pendente'}`,
+                                    timestamp: new Date().toISOString()
+                                });
+                            }
+
                             // Compare groups -> items
                             report.groups.forEach(group => {
                                 const oldGroup = oldReport.groups.find(g => g.id === group.id);
@@ -6735,7 +6765,7 @@ on conflict (id) do nothing;`)}
                                         });
                                     } else {
                                         // Compare fields
-                                        const fields = ['shiftA.initial', 'shiftA.final', 'shiftB.initial', 'shiftB.final', 'status', 'obs'];
+                                        const fields = ['shiftA.initial', 'shiftA.final', 'shiftB.initial', 'shiftB.final', 'status', 'obs', 'gatec_availability'];
                                         fields.forEach(field => {
                                             const getVal = (obj, path) => path.split('.').reduce((o, k) => (o ? o[k] : null), obj);
                                             const newVal = getVal(item, field);
