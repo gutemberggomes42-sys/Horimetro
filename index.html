@@ -5,9 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Horimetro Cambuí - Sistema Avançado</title>
     
+    <!-- Global Error Handler for APK Debugging -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const errorDiv = document.getElementById('global-error-display') || document.createElement('div');
+            errorDiv.id = 'global-error-display';
+            errorDiv.style.position = 'fixed';
+            errorDiv.style.top = '0';
+            errorDiv.style.left = '0';
+            errorDiv.style.width = '100%';
+            errorDiv.style.height = '100%';
+            errorDiv.style.backgroundColor = 'white';
+            errorDiv.style.color = 'red';
+            errorDiv.style.zIndex = '99999';
+            errorDiv.style.padding = '20px';
+            errorDiv.style.overflow = 'auto';
+            errorDiv.style.fontFamily = 'monospace';
+            errorDiv.innerHTML += `<h3>Global Error:</h3><pre>${message}\n${source}:${lineno}:${colno}\n${error ? error.stack : ''}</pre><hr>`;
+            document.body.appendChild(errorDiv);
+            return false;
+        };
+        window.onunhandledrejection = function(event) {
+            const errorDiv = document.getElementById('global-error-display') || document.createElement('div');
+            errorDiv.id = 'global-error-display';
+            errorDiv.style.position = 'fixed';
+            errorDiv.style.top = '0';
+            errorDiv.style.left = '0';
+            errorDiv.style.width = '100%';
+            errorDiv.style.height = '100%';
+            errorDiv.style.backgroundColor = 'white';
+            errorDiv.style.color = 'red';
+            errorDiv.style.zIndex = '99999';
+            errorDiv.style.padding = '20px';
+            errorDiv.style.overflow = 'auto';
+            errorDiv.style.fontFamily = 'monospace';
+            errorDiv.innerHTML += `<h3>Unhandled Rejection:</h3><pre>${event.reason}</pre><hr>`;
+            document.body.appendChild(errorDiv);
+        };
+    </script>
+    
     <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -47,6 +86,32 @@
     <!-- PDF.js for PDF Import -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
+        window.addEventListener('load', function() {
+            var missingDeps = [];
+            if (typeof React === 'undefined') missingDeps.push('React');
+            if (typeof ReactDOM === 'undefined') missingDeps.push('ReactDOM');
+            if (typeof Babel === 'undefined') missingDeps.push('Babel');
+            
+            if (missingDeps.length > 0) {
+                var errorDiv = document.getElementById('global-error-display') || document.createElement('div');
+                errorDiv.id = 'global-error-display';
+                errorDiv.style.position = 'fixed';
+                errorDiv.style.top = '0';
+                errorDiv.style.left = '0';
+                errorDiv.style.width = '100%';
+                errorDiv.style.height = '100%';
+                errorDiv.style.backgroundColor = 'white';
+                errorDiv.style.color = 'red';
+                errorDiv.style.zIndex = '99999';
+                errorDiv.style.padding = '20px';
+                errorDiv.innerHTML = '<h3>CRITICAL ERROR: Missing Dependencies</h3>' +
+                                     '<p>The following libraries failed to load:</p>' +
+                                     '<ul>' + missingDeps.map(function(d) { return '<li>' + d + '</li>'; }).join('') + '</ul>' +
+                                     '<p>Please check your internet connection. This app requires internet to load libraries.</p>';
+                document.body.appendChild(errorDiv);
+            }
+        });
+
         window.pdfjsLib = window['pdfjs-dist/build/pdf'];
         if (window.pdfjsLib) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -67,6 +132,47 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- Error Boundary Component ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                this.setState({ error, errorInfo });
+                console.error("React Error:", error, errorInfo);
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="p-4 bg-red-100 text-red-900 h-screen overflow-auto">
+                            <h1 className="text-xl font-bold mb-2">Algo deu errado</h1>
+                            <p className="mb-4">Ocorreu um erro ao renderizar este componente.</p>
+                            <details className="whitespace-pre-wrap text-sm font-mono bg-white p-2 border rounded">
+                                {this.state.error && this.state.error.toString()}
+                                <br />
+                                {this.state.errorInfo && this.state.errorInfo.componentStack}
+                            </details>
+                            <button 
+                                onClick={() => window.location.reload()}
+                                className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                            >
+                                Recarregar Página
+                            </button>
+                        </div>
+                    );
+                }
+
+                return this.props.children; 
+            }
+        }
 
         // --- Supabase Configuration ---
         const supabaseUrl = 'https://rrxkmlcxrextfxfrayfp.supabase.co';
@@ -381,8 +487,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 title: `Horas Trabalhadas por Equipamentos. ${frenteId}`,
                 date: new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR'),
                 groups: [],
-                plantId: plantId, // Storing plantId to separate data
-                frenteType: type
+                plantId: plantId // Storing plantId to separate data
              };
 
              const isCambui = false; // Disable pre-filled fleets for Cambui to match other units
@@ -839,14 +944,14 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftA.maintenance, 'shiftA.maintenance')}</td>}
                     {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.initial, 'shiftB.initial')}</td>}
                     {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.final, 'shiftB.final', shiftBError, "Hora Final menor que Inicial!")}</td>}
-                    {isAppMode && !isCaminhoes && (
+                    {isAppMode && (
                         <td className="border-r border-gray-300 bg-gray-100 text-center">
                              <div className="flex items-center justify-center space-x-2">
                                 <button 
                                     onClick={() => setShowMobileModal(true)}
-                                    className="bg-green-600 text-white px-3 py-1 rounded text-xs font-bold whitespace-nowrap shadow hover:bg-green-700"
+                                    className={`${isCaminhoes ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white px-3 py-1 rounded text-xs font-bold whitespace-nowrap shadow`}
                                 >
-                                    Novo Lançamento
+                                    {isCaminhoes ? 'Status / Obs' : 'Novo Lançamento'}
                                 </button>
                                 <button 
                                     onClick={() => onDelete(equipment.id)}
@@ -858,27 +963,16 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                              </div>
                         </td>
                     )}
-                    {isAppMode && isCaminhoes && (
-                         <td className="border-r border-gray-300 bg-gray-100 text-center">
-                            <button 
-                                onClick={() => onDelete(equipment.id)}
-                                className="text-red-600 p-1"
-                                title="Excluir Frota"
-                            >
-                                <Icons.X size={16} />
-                            </button>
-                        </td>
-                    )}
                     {!isAppMode && !isCaminhoes && <td className={`border-r border-gray-400 font-bold text-center ${workedBHigh ? 'bg-red-200 text-red-800' : 'bg-gray-200'}`} title={workedBHigh ? "Mais de 24h!" : ""}>{equipment.shiftB.worked.toFixed(1)}</td>}
                     {!isAppMode && !isCaminhoes && <td className="border-r border-gray-300 bg-white">{renderNumberInput(equipment.shiftB.maintenance, 'shiftB.maintenance')}</td>}
                     {!isAppMode && !isCaminhoes && <td className="border-r border-gray-400 bg-gray-200 font-bold text-center">{equipment.totalAB.toFixed(1)}</td>}
-                    {(!isAppMode || isCaminhoes) && <td className="border-r border-gray-400 text-center cursor-pointer"
+                    {!isAppMode && <td className="border-r border-gray-400 text-center cursor-pointer"
                         onClick={() => handleChange('status', equipment.status === 'ok' ? 'issue' : 'ok')}>
                         <div className={`flex items-center justify-center h-full w-full ${equipment.status === 'ok' ? 'text-green-600' : 'bg-red-600 text-white'}`}>
                             {equipment.status === 'ok' ? <Icons.Check size={16} /> : <Icons.X size={16} />}
                         </div>
                     </td>}
-                    {(!isAppMode || isCaminhoes) && <td className={`text-center p-0 relative ${equipment.obs.toLowerCase().includes('oficina') ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}>
+                    {!isAppMode && <td className={`text-center p-0 relative ${equipment.obs.toLowerCase().includes('oficina') ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}>
                         <input
                             type="text"
                             className="w-full h-full bg-transparent text-center text-white placeholder-white/70 focus:outline-none"
@@ -892,16 +986,18 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4">
                         <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
                             <div className={`${plant.bgClass} p-4 flex justify-between items-center text-white`}>
-                                <h3 className="font-bold text-lg">Lançamento: {equipment.frota}</h3>
+                                <h3 className="font-bold text-lg">{isCaminhoes ? 'Status / Observação' : 'Lançamento'}: {equipment.frota}</h3>
                                 <button 
                                     onClick={() => {
-                                        const workedA = equipment.shiftA.worked;
-                                        const workedB = equipment.shiftB.worked;
-                                        const hasErrorA = (typeof workedA === 'number') && (workedA < 0 || workedA > 12.01);
-                                        const hasErrorB = (typeof workedB === 'number') && (workedB < 0 || workedB > 12.01);
-                                        
-                                        if (hasErrorA || hasErrorB) {
-                                            if(!confirm("⚠️ ATENÇÃO: Existem valores inválidos!\n\nSe sair agora, os dados incorretos permanecerão locais mas não poderão ser salvos na nuvem.\n\nDeseja sair mesmo assim?")) return;
+                                        if (!isCaminhoes) {
+                                            const workedA = equipment.shiftA.worked;
+                                            const workedB = equipment.shiftB.worked;
+                                            const hasErrorA = (typeof workedA === 'number') && (workedA < 0 || workedA > 12.01);
+                                            const hasErrorB = (typeof workedB === 'number') && (workedB < 0 || workedB > 12.01);
+                                            
+                                            if (hasErrorA || hasErrorB) {
+                                                if(!confirm("⚠️ ATENÇÃO: Existem valores inválidos!\n\nSe sair agora, os dados incorretos permanecerão locais mas não poderão ser salvos na nuvem.\n\nDeseja sair mesmo assim?")) return;
+                                            }
                                         }
                                         setShowMobileModal(false);
                                     }} 
@@ -912,85 +1008,134 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             </div>
                             
                             <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
-                                <div className="border rounded-lg p-3 bg-gray-50 shadow-sm">
-                                    <h4 className="font-bold text-gray-700 mb-2 border-b pb-1 text-center">Turno A</h4>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Inicial</label>
-                                            <input 
-                                                type="number" 
-                                                step="0.1"
-                                                value={equipment.shiftA.initial ?? ''}
-                                                onChange={(e) => handleChange('shiftA.initial', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                                className="w-full border border-gray-300 rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
-                                                placeholder="0.0"
-                                            />
+                                {!isCaminhoes ? (
+                                    <>
+                                        <div className="border rounded-lg p-3 bg-gray-50 shadow-sm">
+                                            <h4 className="font-bold text-gray-700 mb-2 border-b pb-1 text-center">Turno A</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Inicial</label>
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.1"
+                                                        value={equipment.shiftA.initial ?? ''}
+                                                        onChange={(e) => handleChange('shiftA.initial', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                                        className="w-full border border-gray-300 rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
+                                                        placeholder="0.0"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Final</label>
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.1"
+                                                        value={equipment.shiftA.final ?? ''}
+                                                        onChange={(e) => handleChange('shiftA.final', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                                        className="w-full border border-gray-300 rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
+                                                        placeholder="0.0"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className={`mt-2 text-xs text-center font-medium ${equipment.shiftA.worked < 0 || equipment.shiftA.worked > 12 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                                                Trabalhado: {equipment.shiftA.worked.toFixed(1)}h {equipment.shiftA.worked < 0 ? '(Inválido)' : ''}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Final</label>
-                                            <input 
-                                                type="number" 
-                                                step="0.1"
-                                                value={equipment.shiftA.final ?? ''}
-                                                onChange={(e) => handleChange('shiftA.final', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                                className="w-full border border-gray-300 rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
-                                                placeholder="0.0"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className={`mt-2 text-xs text-center font-medium ${equipment.shiftA.worked < 0 || equipment.shiftA.worked > 12 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
-                                        Trabalhado: {equipment.shiftA.worked.toFixed(1)}h {equipment.shiftA.worked < 0 ? '(Inválido)' : ''}
-                                    </div>
-                                </div>
 
-                                <div className="border rounded-lg p-3 bg-gray-50 shadow-sm">
-                                    <h4 className="font-bold text-gray-700 mb-2 border-b pb-1 text-center">Turno B</h4>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Inicial</label>
-                                            <input 
-                                                type="number" 
-                                                step="0.1"
-                                                value={equipment.shiftB.initial ?? ''}
-                                                onChange={(e) => handleChange('shiftB.initial', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                                className={`w-full border rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300'}`}
-                                                placeholder="0.0"
-                                            />
+                                        <div className="border rounded-lg p-3 bg-gray-50 shadow-sm">
+                                            <h4 className="font-bold text-gray-700 mb-2 border-b pb-1 text-center">Turno B</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Inicial</label>
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.1"
+                                                        value={equipment.shiftB.initial ?? ''}
+                                                        onChange={(e) => handleChange('shiftB.initial', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                                        className={`w-full border rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300'}`}
+                                                        placeholder="0.0"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Final</label>
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.1"
+                                                        value={equipment.shiftB.final ?? ''}
+                                                        onChange={(e) => handleChange('shiftB.final', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                                        className={`w-full border rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300'}`}
+                                                        placeholder="0.0"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className={`mt-2 text-xs text-center font-medium ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                                                Trabalhado: {equipment.shiftB.worked.toFixed(1)}h {equipment.shiftB.worked < 0 ? '(Inválido)' : ''}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-500 mb-1">Horímetro Final</label>
-                                            <input 
-                                                type="number" 
-                                                step="0.1"
-                                                value={equipment.shiftB.final ?? ''}
-                                                onChange={(e) => handleChange('shiftB.final', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                                className={`w-full border rounded p-3 text-xl font-bold text-center focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300'}`}
-                                                placeholder="0.0"
+                                    </>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="border rounded-lg p-4 bg-gray-50 shadow-sm">
+                                            <label className="block text-sm font-bold text-gray-700 mb-3 text-center">Status do Equipamento</label>
+                                            <div className="flex justify-center space-x-4">
+                                                <button
+                                                    onClick={() => handleChange('status', 'ok')}
+                                                    className={`px-6 py-4 rounded-lg font-bold flex flex-col items-center ${equipment.status === 'ok' ? 'bg-green-600 text-white ring-4 ring-green-300' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                                >
+                                                    <Icons.Check size={32} className="mb-2" />
+                                                    <span>Operando</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleChange('status', 'issue')}
+                                                    className={`px-6 py-4 rounded-lg font-bold flex flex-col items-center ${equipment.status === 'issue' ? 'bg-red-600 text-white ring-4 ring-red-300' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                                >
+                                                    <Icons.X size={32} className="mb-2" />
+                                                    <span>Com Defeito</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="border rounded-lg p-4 bg-gray-50 shadow-sm">
+                                            <label className="block text-sm font-bold text-gray-700 mb-2">Observação</label>
+                                            <textarea
+                                                value={equipment.obs}
+                                                onChange={(e) => handleChange('obs', e.target.value)}
+                                                className="w-full border border-gray-300 rounded p-3 text-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none h-32"
+                                                placeholder="Digite aqui..."
                                             />
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                {['Em Manutenção', 'Aguardando Peça', 'Pneu Furado', 'Abastecimento'].map(tag => (
+                                                    <button
+                                                        key={tag}
+                                                        onClick={() => handleChange('obs', tag)}
+                                                        className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded-full border border-gray-300"
+                                                    >
+                                                        {tag}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className={`mt-2 text-xs text-center font-medium ${equipment.shiftB.worked < 0 || equipment.shiftB.worked > 12 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
-                                        Trabalhado: {equipment.shiftB.worked.toFixed(1)}h {equipment.shiftB.worked < 0 ? '(Inválido)' : ''}
-                                    </div>
-                                </div>
+                                )}
                             </div>
 
                             <div className="p-4 border-t bg-gray-50 flex justify-end">
                                 <button 
                                     onClick={() => {
-                                        const workedA = equipment.shiftA.worked;
-                                        const workedB = equipment.shiftB.worked;
-                                        
-                                        const hasErrorA = (typeof workedA === 'number') && (workedA < 0 || workedA > 12.01);
-                                        const hasErrorB = (typeof workedB === 'number') && (workedB < 0 || workedB > 12.01);
-                                        
-                                        if (hasErrorA || hasErrorB) {
-                                            alert("⚠️ ERRO: Valores Inválidos!\n\nVerifique se:\n1. O Horímetro Final é menor que o Inicial (Negativo).\n2. O total de horas excede 12h.\n\nCorrija para continuar.");
-                                            return;
+                                        if (!isCaminhoes) {
+                                            const workedA = equipment.shiftA.worked;
+                                            const workedB = equipment.shiftB.worked;
+                                            
+                                            const hasErrorA = (typeof workedA === 'number') && (workedA < 0 || workedA > 12.01);
+                                            const hasErrorB = (typeof workedB === 'number') && (workedB < 0 || workedB > 12.01);
+                                            
+                                            if (hasErrorA || hasErrorB) {
+                                                alert("⚠️ ERRO: Valores Inválidos!\n\nVerifique se:\n1. O Horímetro Final é menor que o Inicial (Negativo).\n2. O total de horas excede 12h.\n\nCorrija para continuar.");
+                                                return;
+                                            }
                                         }
                                         setShowMobileModal(false);
                                     }}
-                                    className="bg-green-600 text-white px-6 py-3 rounded-lg font-bold shadow hover:bg-green-700 w-full text-lg"
+                                    className={`${isCaminhoes ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white px-6 py-3 rounded-lg font-bold shadow w-full text-lg`}
                                 >
                                     Concluir Lançamento
                                 </button>
@@ -1341,21 +1486,55 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     </html>
                 `;
 
+                const fallbackCopyTextToClipboard = (text) => {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        alert("Relatório (Texto) copiado para WhatsApp!");
+                    } catch (err) {
+                        alert("Erro ao copiar relatório: " + err);
+                    }
+                    document.body.removeChild(textArea);
+                };
+
                 try {
                     const blobHtml = new Blob([fullHtml], { type: 'text/html' });
                     const blobText = new Blob([plainText], { type: 'text/plain' });
                     
-                    navigator.clipboard.write([
-                        new ClipboardItem({
-                            'text/html': blobHtml,
-                            'text/plain': blobText
-                        })
-                    ]).then(() => {
-                        alert("Relatório copiado! \n- Cole no Word para ver Tabela/Gráfico.\n- Cole no WhatsApp para ver texto formatado.");
-                    });
+                    if (navigator.clipboard && navigator.clipboard.write) {
+                        navigator.clipboard.write([
+                            new ClipboardItem({
+                                'text/html': blobHtml,
+                                'text/plain': blobText
+                            })
+                        ]).then(() => {
+                            alert("Relatório copiado! \n- Cole no Word para ver Tabela/Gráfico.\n- Cole no WhatsApp para ver texto formatado.");
+                        }).catch(err => {
+                            console.warn("Clipboard write failed, trying text fallback:", err);
+                            if (navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(plainText).then(() => {
+                                    alert("Relatório (Texto) copiado para WhatsApp!");
+                                }).catch(() => fallbackCopyTextToClipboard(plainText));
+                            } else {
+                                fallbackCopyTextToClipboard(plainText);
+                            }
+                        });
+                    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                         navigator.clipboard.writeText(plainText).then(() => {
+                            alert("Relatório (Texto) copiado para WhatsApp!");
+                        }).catch(() => fallbackCopyTextToClipboard(plainText));
+                    } else {
+                        fallbackCopyTextToClipboard(plainText);
+                    }
                 } catch (err) {
                     console.error("Erro ao copiar HTML:", err);
-                    alert("Erro ao copiar. Seu navegador pode não suportar cópia de HTML direto.");
+                    fallbackCopyTextToClipboard(plainText);
                 }
             };
 
@@ -1932,7 +2111,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                 title="Copiar Relatório para Word"
                             >
                                 <Icons.Copy size={14} className="mr-1" />
-                                Relatório Word
+                                Relatório Word / WhatsApp
                             </button>
                             <button
                                 onClick={generateWordReport}
@@ -3937,6 +4116,48 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             const [loadingUsers, setLoadingUsers] = useState(false);
             const [usersError, setUsersError] = useState(null);
             const [editingUser, setEditingUser] = useState(null);
+            
+            // Audit Logs State
+            const [auditLogs, setAuditLogs] = useState([]);
+            const [loadingAudit, setLoadingAudit] = useState(false);
+            const [auditError, setAuditError] = useState(null);
+
+            const fetchAuditLogs = async () => {
+                setLoadingAudit(true);
+                setAuditError(null);
+                const { data, error } = await supabaseClient
+                    .from('audit_logs')
+                    .select('*')
+                    .eq('plant_id', selectedPlant)
+                    .order('timestamp', { ascending: false })
+                    .limit(200);
+
+                if (error) {
+                    console.error("Error fetching audit logs:", error);
+                    setAuditError(error.message);
+                } else {
+                    setAuditLogs(data || []);
+                }
+                setLoadingAudit(false);
+            };
+
+            const handleTestAudit = async () => {
+                const { error } = await supabaseClient.from('audit_logs').insert({
+                    plant_id: selectedPlant,
+                    frente_id: 'TESTE_SISTEMA',
+                    action: 'TESTE',
+                    details: 'Verificação de conexão e permissões da tabela audit_logs',
+                    user_email: session?.user?.email || 'admin@teste.com',
+                    timestamp: new Date().toISOString()
+                });
+                
+                if (error) {
+                    alert('ERRO: Não foi possível gravar na tabela audit_logs.\n\nDetalhe: ' + error.message + '\n\nVerifique se o script SQL foi executado corretamente no Supabase.');
+                } else {
+                    alert('SUCESSO: Log de teste gravado! A tabela está configurada corretamente.');
+                    fetchAuditLogs();
+                }
+            };
 
             const handleUpdateUser = async (e) => {
                 e.preventDefault();
@@ -4178,6 +4399,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             useEffect(() => {
                 if (activeView === 'database') checkConnection();
                 if (activeView === 'users') fetchUsers();
+                if (activeView === 'audit') fetchAuditLogs();
             }, [activeView, selectedPlant]);
 
             const fetchUsers = async () => {
@@ -4409,6 +4631,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             <div className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 px-4 mt-4">Geral</div>
                             <NavItem id="dashboard" icon={Icons.LayoutDashboard} label="Dashboard" />
                             <NavItem id="reports" icon={Icons.FileSpreadsheet} label="Relatórios" />
+                            <NavItem id="audit" icon={Icons.Activity} label="Auditoria" />
                             
                             <div className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 px-4 mt-6">Sistema</div>
                             <NavItem id="database" icon={({size}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>} label="Banco de Dados" />
@@ -4430,6 +4653,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             <h2 className="text-xl font-bold text-gray-800">
                                 {activeView === 'dashboard' && 'Visão Geral'}
                                 {activeView === 'reports' && 'Gerenciamento de Relatórios'}
+                                {activeView === 'audit' && 'Log de Auditoria'}
                                 {activeView === 'database' && 'Configuração de Banco de Dados'}
                                 {activeView === 'users' && 'Controle de Acesso'}
                             </h2>
@@ -4707,6 +4931,83 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                 </div>
                             )}
 
+                            {activeView === 'audit' && (
+                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+                                    <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                            <h3 className="font-bold text-gray-700">Registros de Alterações</h3>
+                            <button 
+                                onClick={handleTestAudit}
+                                className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-xs font-bold border border-purple-200"
+                            >
+                                Testar Conexão
+                            </button>
+                        </div>
+                        <button onClick={fetchAuditLogs} className="p-2 hover:bg-gray-100 rounded-full text-gray-500">
+                            <Icons.Refresh size={20} />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-auto">
+                        {auditError && (
+                            <div className="p-4 bg-red-50 text-red-600 border-b border-red-100 text-sm">
+                                <strong>Erro ao carregar logs:</strong> {auditError}
+                                <br/>
+                                <span className="text-xs">Verifique se a tabela 'audit_logs' foi criada no Supabase (Menu Banco de Dados).</span>
+                            </div>
+                        )}
+                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-gray-50 text-gray-700 font-bold sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="px-6 py-3 border-b">Data/Hora</th>
+                                                    <th className="px-6 py-3 border-b">Usuário</th>
+                                                    <th className="px-6 py-3 border-b">Frente</th>
+                                                    <th className="px-6 py-3 border-b">Ação</th>
+                                                    <th className="px-6 py-3 border-b">Detalhes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {loadingAudit ? (
+                                                    <tr><td colSpan="5" className="p-8 text-center text-gray-500">Carregando logs...</td></tr>
+                                                ) : auditLogs.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="5" className="p-8 text-center text-gray-500">
+                                                            Nenhum registro de auditoria encontrado.
+                                                            <br/>
+                                                            <span className="text-xs text-gray-400">Verifique se a tabela 'audit_logs' foi criada no Supabase.</span>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    auditLogs.map((log, idx) => (
+                                                        <tr key={log.id || idx} className="hover:bg-gray-50 transition-colors">
+                                                            <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
+                                                                {new Date(log.timestamp).toLocaleString('pt-BR')}
+                                                            </td>
+                                                            <td className="px-6 py-4 font-medium text-gray-900">{log.user_email}</td>
+                                                            <td className="px-6 py-4 text-gray-600">{log.frente_id}</td>
+                                                            <td className="px-6 py-4">
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                                                    log.action === 'CREATE' ? 'bg-green-100 text-green-700' :
+                                                                    log.action === 'UPDATE' ? 'bg-blue-100 text-blue-700' :
+                                                                    log.action === 'ADD_ITEM' ? 'bg-purple-100 text-purple-700' :
+                                                                    'bg-gray-100 text-gray-700'
+                                                                }`}>
+                                                                    {log.action === 'CREATE' ? 'CRIAÇÃO' : 
+                                                                     log.action === 'UPDATE' ? 'EDIÇÃO' : 
+                                                                     log.action === 'ADD_ITEM' ? 'ADIÇÃO' : log.action}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-gray-600 max-w-md truncate" title={log.details}>
+                                                                {log.details}
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
                             {activeView === 'database' && (
                                 <div className="space-y-6">
                                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -4754,7 +5055,21 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                         </h3>
                                         <p className="mb-4 text-gray-400">Use este script no SQL Editor do Supabase para criar as tabelas necessárias.</p>
                                         <pre className="text-xs leading-relaxed">
-{`-- Tabela para Cambuí
+{`-- Tabela de Logs de Auditoria
+create table if not exists audit_logs (
+  id bigint generated by default as identity primary key,
+  plant_id text not null,
+  frente_id text not null,
+  date text,
+  user_email text,
+  action text,
+  details text,
+  timestamp timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table audit_logs enable row level security;
+create policy "Public Access" on audit_logs for all using (true) with check (true);
+
+-- Tabela para Cambuí
 create table if not exists daily_reports_cambui (
   id bigint generated by default as identity primary key,
   frente_id text not null,
@@ -5300,7 +5615,41 @@ on conflict (id) do nothing;`)}
             </div>
         );
 
-        const MobileInputList = ({ groups, shift, onUpdate, onBack, onSave, isSaving }) => (
+        const MobileInputList = ({ groups, shift, onUpdate, onBack, onSave, isSaving, frenteType, onCopyReport }) => {
+            const [modalEquipment, setModalEquipment] = useState(null);
+            const [modalGroupId, setModalGroupId] = useState(null);
+
+            // Safety Checks
+            if (!groups || !Array.isArray(groups)) {
+                return (
+                    <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center justify-center">
+                        <div className="bg-white p-6 rounded-lg shadow-lg text-center max-w-sm w-full">
+                            <Icons.AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">Erro ao carregar dados</h2>
+                            <p className="text-gray-600 mb-6">A estrutura de dados desta frente parece inválida ou incompleta.</p>
+                            <button 
+                                onClick={onBack}
+                                className="w-full bg-gray-800 text-white font-bold py-3 rounded-lg hover:bg-gray-700 transition-colors"
+                            >
+                                Voltar
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            const handleOpenModal = (group, item) => {
+                setModalGroupId(group.id);
+                setModalEquipment(item);
+            };
+
+            const handleModalChange = (field, value) => {
+                if (!modalEquipment || !modalGroupId) return;
+                onUpdate(modalGroupId, modalEquipment.id, field, value);
+                setModalEquipment(prev => ({ ...prev, [field]: value }));
+            };
+
+            return (
             <div className="min-h-screen bg-gray-100 pb-24">
                 <div className="bg-gray-800 text-white p-4 sticky top-0 z-20 shadow-lg flex items-center justify-between">
                     <div className="flex items-center">
@@ -5312,17 +5661,30 @@ on conflict (id) do nothing;`)}
                             <div className="text-xs text-gray-400 font-bold">TURNO {shift === 'shiftA' ? 'A' : 'B'}</div>
                         </div>
                     </div>
-                    <button 
-                        onClick={onSave}
-                        disabled={isSaving}
-                        className={`px-3 py-1 rounded font-bold text-sm ${isSaving ? 'bg-gray-600' : 'bg-green-500'}`}
-                    >
-                        {isSaving ? '...' : 'Salvar'}
-                    </button>
+                    <div className="flex items-center space-x-2">
+                        {onCopyReport && (
+                            <button 
+                                onClick={onCopyReport}
+                                className="p-2 bg-green-600 rounded text-white shadow active:bg-green-700"
+                                title="Copiar Relatório WhatsApp"
+                            >
+                                <Icons.Copy size={18} />
+                            </button>
+                        )}
+                        <button 
+                            onClick={onSave}
+                            disabled={isSaving}
+                            className={`px-3 py-1 rounded font-bold text-sm ${isSaving ? 'bg-gray-600' : 'bg-green-500'}`}
+                        >
+                            {isSaving ? '...' : 'Salvar'}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="p-3 space-y-6">
-                    {groups.map(group => (
+                    {groups.map(group => {
+                        if (!group || !group.items) return null;
+                        return (
                         <div key={group.id} className="animate-fade-in">
                             <h3 className="bg-gray-200 text-gray-700 font-bold px-3 py-2 rounded-t-lg border border-gray-300 border-b-0 text-sm uppercase tracking-wide">
                                 {group.name}
@@ -5330,49 +5692,102 @@ on conflict (id) do nothing;`)}
                             <div className="bg-white rounded-b-lg shadow border border-gray-200 divide-y divide-gray-100">
                                 {group.items.map(item => (
                                     <div key={item.id} className="p-3">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="font-black text-lg text-gray-800 bg-gray-100 px-2 rounded">
-                                                {item.frota}
-                                            </span>
-                                            <span className="text-xs font-bold text-gray-400">
-                                                Trab: {item[shift].worked.toFixed(1)}h
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="relative">
-                                                <label className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-bold text-gray-500">
-                                                    INICIAL
-                                                </label>
-                                                <input 
-                                                    type="number" 
-                                                    inputMode="decimal"
-                                                    step="0.1"
-                                                    value={item[shift].initial ?? ''}
-                                                    onChange={(e) => onUpdate(group.id, item.id, `${shift}.initial`, e.target.value)}
-                                                    className="w-full border border-gray-300 rounded-lg p-3 text-center text-xl font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                                    placeholder="-"
-                                                />
+                                        {(() => {
+                                            if (!item) return null;
+                                            const shiftData = item[shift];
+                                            if (!shiftData) return <div className="text-red-500 text-xs font-bold p-2 bg-red-50 rounded">Erro: Dados do turno não encontrados para {item.frota}</div>;
+                                            
+                                            // Safe access to frenteType
+                                            const currentType = frenteType || 'plantadora';
+                                            
+                                            return (
+                                            <>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="font-black text-lg text-gray-800 bg-gray-100 px-2 rounded">
+                                                    {item.frota}
+                                                </span>
+                                                {currentType !== 'caminhoes' && (
+                                                    <span className="text-xs font-bold text-gray-400">
+                                                        Trab: {(shiftData.worked || 0).toFixed(1)}h
+                                                    </span>
+                                                )}
+                                                {currentType === 'caminhoes' && (
+                                                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${item.status === 'issue' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                                        {item.status === 'issue' ? 'Com Defeito' : 'Operando'}
+                                                    </span>
+                                                )}
                                             </div>
-                                            <div className="relative">
-                                                <label className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-bold text-gray-500">
-                                                    FINAL
-                                                </label>
-                                                <input 
-                                                    type="number" 
-                                                    inputMode="decimal"
-                                                    step="0.1"
-                                                    value={item[shift].final ?? ''}
-                                                    onChange={(e) => onUpdate(group.id, item.id, `${shift}.final`, e.target.value)}
-                                                    className="w-full border border-gray-300 rounded-lg p-3 text-center text-xl font-bold focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
-                                                    placeholder="-"
-                                                />
-                                            </div>
-                                        </div>
+                                            
+                                            {currentType === 'caminhoes' ? (
+                                                <div className="mt-2">
+                                                    <button 
+                                                        onClick={() => handleOpenModal(group, item)}
+                                                        className={`w-full font-bold py-3 px-4 rounded-lg shadow transition-colors flex items-center justify-center space-x-2 ${item.status === 'issue' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'}`}
+                                                    >
+                                                        {item.status === 'issue' ? <Icons.AlertTriangle size={20} /> : <Icons.Check size={20} />}
+                                                        <span>{item.status === 'issue' ? 'Defeito / Obs' : 'Status / Obs'}</span>
+                                                    </button>
+                                                    {item.obs && (
+                                                        <div className="mt-2 text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-200 italic">
+                                                            "{item.obs}"
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="relative">
+                                                            <label className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-bold text-gray-500">
+                                                                INICIAL
+                                                            </label>
+                                                            <input 
+                                                                type="number" 
+                                                                inputMode="decimal"
+                                                                step="0.1"
+                                                                value={shiftData.initial ?? ''}
+                                                                onChange={(e) => onUpdate(group.id, item.id, `${shift}.initial`, e.target.value)}
+                                                                className="w-full border border-gray-300 rounded-lg p-3 text-center text-xl font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                                                placeholder="-"
+                                                            />
+                                                        </div>
+                                                        <div className="relative">
+                                                            <label className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-bold text-gray-500">
+                                                                FINAL
+                                                            </label>
+                                                            <input 
+                                                                type="number" 
+                                                                inputMode="decimal"
+                                                                step="0.1"
+                                                                value={shiftData.final ?? ''}
+                                                                onChange={(e) => onUpdate(group.id, item.id, `${shift}.final`, e.target.value)}
+                                                                className="w-full border border-gray-300 rounded-lg p-3 text-center text-xl font-bold focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                                                                placeholder="-"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <button 
+                                                        onClick={() => handleOpenModal(group, item)}
+                                                        className={`w-full font-bold py-2 px-4 rounded shadow transition-colors flex items-center justify-center space-x-2 text-sm ${item.status === 'issue' ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'}`}
+                                                    >
+                                                        {item.status === 'issue' ? <Icons.AlertTriangle size={16} /> : <Icons.Check size={16} />}
+                                                        <span>{item.status === 'issue' ? 'Defeito / Obs' : 'Status / Obs'}</span>
+                                                    </button>
+                                                    {item.obs && (
+                                                        <div className="mt-2 text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-200 italic">
+                                                            "{item.obs}"
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            </>
+                                            );
+                                        })()}
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
 
                 <div className="fixed bottom-0 left-0 right-0 bg-white p-4 border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-20">
@@ -5384,8 +5799,73 @@ on conflict (id) do nothing;`)}
                         {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                     </button>
                 </div>
+
+                {/* Mobile Status/Obs Modal */}
+                {modalEquipment && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden animate-scale-in">
+                            <div className="bg-gray-800 p-4 flex justify-between items-center text-white">
+                                <h3 className="font-bold text-lg">{modalEquipment.frota} - Status / Obs</h3>
+                                <button onClick={() => setModalEquipment(null)} className="text-gray-400 hover:text-white">
+                                    <Icons.X size={24} />
+                                </button>
+                            </div>
+                            <div className="p-4 space-y-6 max-h-[70vh] overflow-y-auto">
+                                <div className="border rounded-lg p-4 bg-gray-50 shadow-sm">
+                                    <label className="block text-sm font-bold text-gray-700 mb-3 text-center">Status</label>
+                                    <div className="flex justify-center space-x-4">
+                                        <button
+                                            onClick={() => handleModalChange('status', 'ok')}
+                                            className={`px-6 py-4 rounded-lg font-bold flex flex-col items-center ${modalEquipment.status === 'ok' ? 'bg-green-600 text-white ring-4 ring-green-300' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                        >
+                                            <Icons.Check size={32} className="mb-2" />
+                                            <span>Operando</span>
+                                        </button>
+                                        <button
+                                            onClick={() => handleModalChange('status', 'issue')}
+                                            className={`px-6 py-4 rounded-lg font-bold flex flex-col items-center ${modalEquipment.status === 'issue' ? 'bg-red-600 text-white ring-4 ring-red-300' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                        >
+                                            <Icons.X size={32} className="mb-2" />
+                                            <span>Com Defeito</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div className="border rounded-lg p-4 bg-gray-50 shadow-sm">
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Observação</label>
+                                    <textarea
+                                        value={modalEquipment.obs || ''}
+                                        onChange={(e) => handleModalChange('obs', e.target.value)}
+                                        className="w-full border border-gray-300 rounded p-3 text-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none h-32"
+                                        placeholder="Digite aqui..."
+                                    />
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {['Em Manutenção', 'Aguardando Peça', 'Pneu Furado', 'Abastecimento'].map(tag => (
+                                            <button
+                                                key={tag}
+                                                onClick={() => handleModalChange('obs', tag)}
+                                                className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded-full border border-gray-300"
+                                            >
+                                                {tag}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-4 border-t bg-gray-50 flex justify-end">
+                                <button 
+                                    onClick={() => setModalEquipment(null)}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold shadow w-full text-lg"
+                                >
+                                    Concluir
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-        );
+            );
+        };
 
         const Auth = ({ plants }) => {
             const [isLogin, setIsLogin] = useState(true);
@@ -5997,8 +6477,9 @@ on conflict (id) do nothing;`)}
             
             // State: Map of frenteId -> { [date]: ReportData }
             const [allData, setAllData] = useState({});
-            const [frenteTypes, setFrenteTypes] = useState({});
+            const [lastSavedData, setLastSavedData] = useState({}); // For Audit Log
             const [activeFrenteId, setActiveFrenteId] = useState('');
+            const [frenteTypes, setFrenteTypes] = useState({});
             
             const [view, setView] = useState('entry'); // 'entry' or 'dashboard'
             const [entryMode, setEntryMode] = useState('list'); // 'list' or 'form'
@@ -6068,7 +6549,6 @@ on conflict (id) do nothing;`)}
                                     if (f.type) newTypes[f.name] = f.type;
                                 });
                             }
-                            
                             setFrenteTypes(newTypes);
 
                             if (data) {
@@ -6085,6 +6565,7 @@ on conflict (id) do nothing;`)}
                             }
                             
                             setAllData(newData);
+                            setLastSavedData(JSON.parse(JSON.stringify(newData)));
                             
                             // Update active frente logic
                             const availableFrentes = Object.keys(newData);
@@ -6129,6 +6610,13 @@ on conflict (id) do nothing;`)}
                             // report_data might not have plantId if older record, but table ensures scope.
                             
                             setAllData(prev => ({
+                                ...prev,
+                                [frente_id]: {
+                                    ...(prev[frente_id] || {}),
+                                    [date]: report_data
+                                }
+                            }));
+                            setLastSavedData(prev => ({
                                 ...prev,
                                 [frente_id]: {
                                     ...(prev[frente_id] || {}),
@@ -6209,6 +6697,77 @@ on conflict (id) do nothing;`)}
                 
                 const currentUser = session?.user?.email || 'Desconhecido';
 
+                // Audit Log Generation
+                const logEntries = [];
+                try {
+                    const currentFrenteData = allData[activeFrenteId] || {};
+                    const oldFrenteData = lastSavedData[activeFrenteId] || {};
+
+                    Object.entries(currentFrenteData).forEach(([date, report]) => {
+                        const oldReport = oldFrenteData[date];
+                        if (!oldReport) {
+                            logEntries.push({
+                                plant_id: plantId,
+                                frente_id: activeFrenteId,
+                                date: date,
+                                user_email: currentUser,
+                                action: 'CREATE',
+                                details: 'Novo relatório criado/importado',
+                                timestamp: new Date().toISOString()
+                            });
+                        } else {
+                            // Compare groups -> items
+                            report.groups.forEach(group => {
+                                const oldGroup = oldReport.groups.find(g => g.id === group.id);
+                                if (!oldGroup) return; 
+                                
+                                group.items.forEach(item => {
+                                    const oldItem = oldGroup.items.find(i => i.id === item.id);
+                                    if (!oldItem) {
+                                         logEntries.push({
+                                            plant_id: plantId,
+                                            frente_id: activeFrenteId,
+                                            date: date,
+                                            user_email: currentUser,
+                                            action: 'ADD_ITEM',
+                                            details: `Adicionou equipamento ${item.frota}`,
+                                            timestamp: new Date().toISOString()
+                                        });
+                                    } else {
+                                        // Compare fields
+                                        const fields = ['shiftA.initial', 'shiftA.final', 'shiftB.initial', 'shiftB.final', 'status', 'obs'];
+                                        fields.forEach(field => {
+                                            const getVal = (obj, path) => path.split('.').reduce((o, k) => (o ? o[k] : null), obj);
+                                            const newVal = getVal(item, field);
+                                            const oldVal = getVal(oldItem, field);
+                                            
+                                            if (newVal != oldVal) { 
+                                                 logEntries.push({
+                                                    plant_id: plantId,
+                                                    frente_id: activeFrenteId,
+                                                    date: date,
+                                                    user_email: currentUser,
+                                                    action: 'UPDATE',
+                                                    details: `Alterou ${item.frota} (${field}): ${oldVal ?? '-'} -> ${newVal ?? '-'}`,
+                                                    timestamp: new Date().toISOString()
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                            });
+                        }
+                    });
+
+                    if (logEntries.length > 0) {
+                         supabaseClient.from('audit_logs').insert(logEntries).then(({ error }) => {
+                             if (error) console.error("Error saving logs (audit_logs table might be missing):", error);
+                         });
+                    }
+                } catch (logErr) {
+                    console.error("Error generating logs:", logErr);
+                }
+
                 const updates = Object.entries(allData[activeFrenteId]).map(([date, report]) => {
                     // Update report with editor info
                     const updatedReport = {
@@ -6256,6 +6815,13 @@ on conflict (id) do nothing;`)}
                     console.error("Save Connection Error:", err);
                     setNotification({ message: 'Salvo localmente. Pendente para subir pro banco de dados', type: 'warning' });
                 }
+
+                // Update reference for next changes to prevent duplicate logs on subsequent saves
+                setLastSavedData(prev => ({
+                    ...prev,
+                    [activeFrenteId]: JSON.parse(JSON.stringify(allData[activeFrenteId] || {}))
+                }));
+
                 setIsSaving(false);
             };
 
@@ -6844,10 +7410,6 @@ on conflict (id) do nothing;`)}
                     ...prev,
                     [name]: { [selectedDate]: createInitialData(name, selectedDate, plantId, newFrenteType) }
                 }));
-                setFrenteTypes(prev => ({
-                    ...prev,
-                    [name]: newFrenteType
-                }));
                 setActiveFrenteId(name);
                 setShowNewFrenteModal(false);
                 setNotification({ message: 'Frente criada com sucesso!', type: 'success' });
@@ -7049,6 +7611,71 @@ on conflict (id) do nothing;`)}
                 }
             };
 
+            const copyWhatsAppReport = () => {
+                const report = allData[activeFrenteId]?.[selectedDate];
+                if (!report) {
+                    alert("Sem dados para gerar relatório.");
+                    return;
+                }
+
+                // Generate Plain Text for WhatsApp
+                let plainText = `*Usina ${plant.name}*\n`;
+                plainText += `*Frente ${activeFrenteId}*\n\n`;
+
+                report.groups.forEach(group => {
+                    if (!group.items || group.items.length === 0) return;
+                    
+                    plainText += `*${group.name}*\n`;
+                    
+                    group.items.forEach(item => {
+                        if (item.status === 'issue') {
+                             const obs = item.obs ? item.obs : 'motivo de parada';
+                             plainText += `❌ ${item.frota} -> ${obs.toUpperCase()}\n`;
+                        } else {
+                             plainText += `✅ ${item.frota}\n`;
+                        }
+                    });
+                    plainText += '\n';
+                });
+                
+                // Fallback copy function
+                const fallbackCopyTextToClipboard = (text) => {
+                    var textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    
+                    // Avoid scrolling to bottom
+                    textArea.style.top = "0";
+                    textArea.style.left = "0";
+                    textArea.style.position = "fixed";
+                    
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    
+                    try {
+                        var successful = document.execCommand('copy');
+                        var msg = successful ? 'successful' : 'unsuccessful';
+                        alert("Relatório copiado para a área de transferência!");
+                    } catch (err) {
+                        console.error('Fallback: Oops, unable to copy', err);
+                        alert("Erro ao copiar relatório.");
+                    }
+                    
+                    document.body.removeChild(textArea);
+                }
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(plainText).then(() => {
+                        alert("Relatório copiado para a área de transferência!");
+                    }, (err) => {
+                        console.error('Async: Could not copy text: ', err);
+                        fallbackCopyTextToClipboard(plainText);
+                    });
+                } else {
+                    fallbackCopyTextToClipboard(plainText);
+                }
+            };
+
             // Mobile Handlers
             const handleMobileNewLaunch = () => {
                 if (!activeFrenteId && Object.keys(allData).length > 0) {
@@ -7103,10 +7730,20 @@ on conflict (id) do nothing;`)}
                     if (!currentData) {
                         mobileContent = <div className="p-4 text-center">Carregando dados...</div>;
                     } else {
-                        mobileContent = <MobileInputList 
-                            groups={currentData.groups} 
-                            shift={mobileShift} 
-                            onUpdate={(groupId, itemId, field, value) => {
+                        mobileContent = (
+                            <ErrorBoundary>
+                                <MobileInputList 
+                                    groups={currentData.groups || []} 
+                                    shift={mobileShift} 
+                                    frenteType={frenteTypes[activeFrenteId] || 'plantadora'}
+                                    onCopyReport={copyWhatsAppReport}
+                                    onUpdate={(groupId, itemId, field, value) => {
+                                 // Bypass validation for status and obs updates
+                                 if (field === 'status' || field === 'obs') {
+                                     updateEquipment(groupId, itemId, field, value);
+                                     return;
+                                 }
+
                                  const val = value === '' ? null : parseFloat(value);
                                  
                                  // Mobile Validation with Sound and Alert
@@ -7147,7 +7784,9 @@ on conflict (id) do nothing;`)}
                             onBack={handleMobileBack} 
                             onSave={handleSave} 
                             isSaving={isSaving} 
-                        />;
+                        />
+                    </ErrorBoundary>
+                );
                     }
                 } else {
                     // Default to home
@@ -7295,7 +7934,7 @@ on conflict (id) do nothing;`)}
                     {showSql && <SqlInstructions onClose={() => setShowSql(false)} />}
                     {isLoading && (
                         <div className="fixed inset-0 bg-white/80 flex items-center justify-center z-50">
-                            <div className={`animate-spin rounded-full h-16 w-16 border-t-4 ${plant.borderClass}`}></div>
+                            <div className={`animate-spin rounded-full h-16 w-16 border-t-4 ${plant ? plant.borderClass : 'border-blue-500'}`}></div>
                         </div>
                     )}
                     {/* Top Navigation Bar */}
@@ -7601,7 +8240,7 @@ on conflict (id) do nothing;`)}
                                                     onTransferEquipment={handleTransferEquipment}
                                                     onSqlError={() => setShowSql(true)}
                                                     isAppMode={isAppMode}
-                                                    frenteType={currentData.frenteType}
+                                                    frenteType={frenteTypes[activeFrenteId] || 'plantadora'}
                                                 />
                                             ))}
                                         </div>
@@ -7637,8 +8276,17 @@ on conflict (id) do nothing;`)}
             );
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        try {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(
+                <ErrorBoundary>
+                    <App />
+                </ErrorBoundary>
+            );
+        } catch (err) {
+            console.error("FATAL ERROR MOUNTING APP:", err);
+            document.body.innerHTML += '<div style="color:red; padding:20px; font-size: 24px;"><h1>FATAL ERROR MOUNTING APP</h1><pre>' + err.toString() + '</pre></div>';
+        }
     </script>
 </body>
 </html>
