@@ -7553,6 +7553,57 @@ on conflict (id) do nothing;`)}
                 }
             };
 
+            const handleReopen = async (frenteId, date) => {
+                if (!isAdmin) {
+                    alert('Apenas administradores podem reabrir lançamentos.');
+                    return;
+                }
+                if (!confirm('Deseja realmente reabrir este lançamento para edição?')) return;
+                
+                const report = allData[frenteId]?.[date];
+                if (!report) return;
+
+                const currentUser = session?.user?.email || 'Desconhecido';
+                const updatedReport = { 
+                    ...report, 
+                    status: 'pending',
+                    concluded_by: null,
+                    last_editor: currentUser,
+                    updated_at: new Date().toISOString()
+                };
+
+                // Optimistic update
+                setAllData(prev => ({
+                    ...prev,
+                    [frenteId]: {
+                        ...prev[frenteId],
+                        [date]: updatedReport
+                    }
+                }));
+
+                try {
+                    let tableName = 'daily_reports'; 
+                    if (plantId === 'cambui') tableName = 'daily_reports_cambui';
+                    else if (plantId === 'panorama') tableName = 'daily_reports_panorama';
+                    else if (plantId === 'vale-verdao') tableName = 'daily_reports_vale_verdao';
+                    else if (plantId === 'floresta') tableName = 'daily_reports_floresta';
+
+                    const { error } = await supabaseClient
+                        .from(tableName)
+                        .upsert({
+                            frente_id: frenteId,
+                            date: date,
+                            report_data: updatedReport
+                        }, { onConflict: 'frente_id, date' });
+
+                    if (error) throw error;
+                    setNotification({ message: 'Lançamento reaberto com sucesso!', type: 'success' });
+                } catch (err) {
+                    console.error("Error reopening:", err);
+                    setNotification({ message: 'Erro ao reabrir lançamento.', type: 'error' });
+                }
+            };
+
             const handleLoadEntry = (targetPlantId, targetDate, targetFrenteId) => {
                 setPlantId(targetPlantId);
                 setSelectedDate(targetDate);
@@ -8185,6 +8236,14 @@ on conflict (id) do nothing;`)}
                                                                         className="text-green-600 hover:text-green-900 font-bold"
                                                                     >
                                                                         Concluir
+                                                                    </button>
+                                                                )}
+                                                                {item.status === 'completed' && isAdmin && (
+                                                                    <button 
+                                                                        onClick={() => handleReopen(item.frenteId, item.date)}
+                                                                        className="text-orange-600 hover:text-orange-900 font-bold ml-2"
+                                                                    >
+                                                                        Refazer
                                                                     </button>
                                                                 )}
                                                             </td>
