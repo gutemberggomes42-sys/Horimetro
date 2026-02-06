@@ -817,8 +817,9 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
 
         const EquipmentRow = ({ equipment, plant, onChange, onDelete, onTransfer, isLast, groupName, onSqlError, lastReading, isAppMode, frenteType, frenteId }) => {
             const [showMobileModal, setShowMobileModal] = useState(false);
-            const isCaminhoes = frenteType === 'caminhoes' || frenteType === 'reboques';
-            const isReboques = frenteType === 'reboques';
+            const isReboqueGroup = groupName && groupName.toLowerCase().includes('reboque');
+            const isCaminhoes = frenteType === 'caminhoes' || frenteType === 'reboques' || isReboqueGroup;
+            const isReboques = frenteType === 'reboques' || isReboqueGroup;
 
             const handleChange = (field, value) => {
                 // Validação de Excesso de Horas (> 12h)
@@ -1184,8 +1185,9 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
         };
 
         const EquipmentGroupTable = ({ group, plant, onUpdateEquipment, onUpdateGroup, onAddEquipment, onDeleteEquipment, onTransferEquipment, onSqlError, lastReadings, isAppMode, frenteType, frenteId }) => {
-            const isCaminhoes = frenteType === 'caminhoes' || frenteType === 'reboques';
-            const isReboques = frenteType === 'reboques';
+            const isReboqueGroup = group.name && group.name.toLowerCase().includes('reboque');
+            const isCaminhoes = frenteType === 'caminhoes' || frenteType === 'reboques' || isReboqueGroup;
+            const isReboques = frenteType === 'reboques' || isReboqueGroup;
 
             // Filter out items that are used as "conjunto" in other items
             const visibleItems = useMemo(() => {
@@ -1337,22 +1339,47 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     return;
                 }
 
+                const isReboques = data.frenteType === 'reboques';
+
+                // Filter items for report (hide conjuntos in reboques)
+                const filteredGroups = report.groups.map(group => {
+                    if (!group.items) return { ...group, items: [] };
+                    
+                    let visibleItems = group.items;
+                    if (isReboques) {
+                        const conjuntos = new Set(
+                            group.items
+                                .map(i => i.conjunto)
+                                .filter(c => c && typeof c === 'string' && c.trim() !== '')
+                                .map(c => c.trim().toUpperCase())
+                        );
+                        visibleItems = group.items.filter(item => !conjuntos.has(item.frota ? item.frota.trim().toUpperCase() : ''));
+                    }
+                    return { ...group, items: visibleItems };
+                });
+
                 // Generate Plain Text for WhatsApp
                 let plainText = `*Usina ${plant.name}*\n`;
                 plainText += `*Frente ${data.id}*\n\n`;
 
-                report.groups.forEach(group => {
+                filteredGroups.forEach(group => {
                     if (!group.items || group.items.length === 0) return;
                     
                     plainText += `*${group.name}*\n`;
                     
                     group.items.forEach(item => {
                         const statusIcon = item.status === 'ok' ? '✅' : '❌';
+                        
+                        let displayName = item.frota;
+                        if (isReboques && item.conjunto && item.conjunto.trim()) {
+                            displayName = `${item.frota} _ ${item.conjunto}`;
+                        }
+
                         if (item.status === 'ok') {
-                            plainText += `${statusIcon} ${item.frota}\n`;
+                            plainText += `${statusIcon} ${displayName}\n`;
                         } else {
                             const obs = item.obs ? item.obs : 'motivo de parada';
-                            plainText += `${statusIcon} ${item.frota} -> ${obs.toUpperCase()}\n`;
+                            plainText += `${statusIcon} ${displayName} -> ${obs.toUpperCase()}\n`;
                         }
                     });
                     plainText += '\n';
@@ -1362,7 +1389,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 let totalGeral = 0;
                 let ativosGeral = 0;
                 
-                report.groups.forEach(g => {
+                filteredGroups.forEach(g => {
                     if (g.items) {
                         totalGeral += g.items.length;
                         ativosGeral += g.items.filter(i => i.status === 'ok').length;
@@ -1379,7 +1406,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     <table style="border-collapse: collapse; font-family: 'Segoe UI', 'Calibri', Arial, sans-serif; width: 700px; border: 1px solid #ddd; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
                         <!-- Header Principal -->
                         <tr>
-                            <td rowspan="${report.groups.reduce((acc, g) => acc + (g.items?.length > 0 ? 1 : 0), 0) + 3}" style="background-color: #2E7D32; color: white; font-weight: bold; text-align: center; vertical-align: middle; width: 40px; border-bottom: 1px solid #1B5E20; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 14px; letter-spacing: 2px;">
+                            <td rowspan="${filteredGroups.reduce((acc, g) => acc + (g.items?.length > 0 ? 1 : 0), 0) + 3}" style="background-color: #2E7D32; color: white; font-weight: bold; text-align: center; vertical-align: middle; width: 40px; border-bottom: 1px solid #1B5E20; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 14px; letter-spacing: 2px;">
                                 <span style="display: inline-block; transform: rotate(90deg); white-space: nowrap;">USINA ${plant.name.toUpperCase()}</span>
                             </td>
                             <td colspan="3" style="border-bottom: 2px solid #2E7D32; text-align: left; padding: 15px; background-color: #f8f9fa;">
@@ -1419,7 +1446,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         </tr>
                 `;
 
-                report.groups.forEach((group, index) => {
+                filteredGroups.forEach((group, index) => {
                     if (!group.items || group.items.length === 0) return;
 
                     const total = group.items.length;
@@ -1477,6 +1504,11 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         const statusLabel = isIssue ? '❌' : '✅';
                         const obs = item.obs || '';
                         
+                        let displayName = item.frota;
+                        if (isReboques && item.conjunto && item.conjunto.trim()) {
+                            displayName = `${item.frota} _ ${item.conjunto}`;
+                        }
+                        
                         // Destaque visual para paradas
                         const obsStyle = isIssue 
                             ? 'color: #C62828; font-weight: bold; background-color: #FFEBEE; border-radius: 4px; padding: 2px 6px; display: inline-block;' 
@@ -1486,7 +1518,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                     <tr>
                                         <!-- Frota -->
                                         <td style="font-weight: bold; padding: 3px; width: 60px; border: none; color: #333; font-size: 12px; white-space: nowrap;">
-                                            ${item.frota}
+                                            ${displayName}
                                         </td>
                                         
                                         <!-- Status Icon -->
@@ -1630,9 +1662,25 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     // Título da Frente
                     html += `<h2>*${frenteId}*</h2>`;
 
+                    const isReboques = frenteTypes[frenteId] === 'reboques';
+
                     report.groups.forEach(group => {
                         // Verifica se o grupo tem itens
                         if (!group.items || group.items.length === 0) return;
+
+                        // Filter items
+                        let visibleItems = group.items;
+                        if (isReboques) {
+                            const conjuntos = new Set(
+                                group.items
+                                    .map(i => i.conjunto)
+                                    .filter(c => c && typeof c === 'string' && c.trim() !== '')
+                                    .map(c => c.trim().toUpperCase())
+                            );
+                            visibleItems = group.items.filter(item => !conjuntos.has(item.frota ? item.frota.trim().toUpperCase() : ''));
+                        }
+
+                        if (visibleItems.length === 0) return;
 
                         html += `<h3>*${group.name}*</h3>`;
                         
@@ -1641,12 +1689,14 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                 <thead>
                                     <tr>
                                         <th>Frota</th>
+                                        ${!isReboques ? `
                                         <th>H. Trab (A)</th>
                                         <th>H. Manut (A)</th>
                                         <th>H. Trab (B)</th>
                                         <th>H. Manut (B)</th>
                                         <th>Total Trab</th>
                                         <th>Total Manut</th>
+                                        ` : ''}
                                         <th>Disp. Mec. %</th>
                                         <th>Status</th>
                                         <th>Obs</th>
@@ -1655,7 +1705,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                 <tbody>
                         `;
 
-                        group.items.forEach(item => {
+                        visibleItems.forEach(item => {
                             const workedA = item.shiftA.worked || 0;
                             const maintA = item.shiftA.maintenance || 0;
                             const workedB = item.shiftB.worked || 0;
@@ -1666,15 +1716,22 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             const availability = totalTime > 0 ? (totalWorked / totalTime) * 100 : 0;
                             const statusIcon = item.status === 'ok' ? '✅' : '❌';
                             
+                            let displayName = item.frota;
+                            if (isReboques && item.conjunto && item.conjunto.trim()) {
+                                displayName = `${item.frota} _ ${item.conjunto}`;
+                            }
+                            
                             html += `
                                 <tr>
-                                    <td>${item.frota}</td>
+                                    <td>${displayName}</td>
+                                    ${!isReboques ? `
                                     <td>${workedA.toFixed(1)}</td>
                                     <td>${maintA.toFixed(1)}</td>
                                     <td>${workedB.toFixed(1)}</td>
                                     <td>${maintB.toFixed(1)}</td>
                                     <td>${totalWorked.toFixed(1)}</td>
                                     <td>${totalMaint.toFixed(1)}</td>
+                                    ` : ''}
                                     <td>${availability.toFixed(1)}%</td>
                                     <td class="${item.status}">${statusIcon}</td>
                                     <td class="obs">${item.obs || ''}</td>
@@ -1707,10 +1764,49 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             };
 
             const allItems = data.groups.flatMap(g => g.items);
+            
+            // Reboques logic for summary cards
+            let effectiveItems = allItems;
+            if (data.frenteType === 'reboques') {
+                const normalizeId = (id) => id ? id.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+                const conjuntos = new Set(
+                    allItems
+                        .map(i => i.conjunto)
+                        .filter(c => c && typeof c === 'string' && c.trim() !== '')
+                        .map(c => normalizeId(c))
+                );
+                // Filter main list to exclude secondary items (conjuntos)
+                effectiveItems = allItems.filter(item => !conjuntos.has(normalizeId(item.frota)));
+                
+                // But check status of secondary items to affect primary item status
+                effectiveItems = effectiveItems.map(item => {
+                     // Check if this item has a conjunto that has an issue
+                     if (item.conjunto && item.conjunto.trim()) {
+                         const conjuntoId = normalizeId(item.conjunto);
+                         const conjuntoItem = allItems.find(i => normalizeId(i.frota) === conjuntoId);
+                         
+                         const hasIssue = conjuntoItem && (
+                            conjuntoItem.status === 'issue' || 
+                            (conjuntoItem.shiftA?.maintenance > 0) || 
+                            (conjuntoItem.shiftB?.maintenance > 0)
+                        );
+                        
+                        if (hasIssue) {
+                            return { ...item, status: 'issue' };
+                        }
+                     }
+                     return item;
+                });
+            }
+
             const totalHoursA = allItems.reduce((acc, item) => acc + (item.shiftA.worked || 0), 0);
             const totalHoursB = allItems.reduce((acc, item) => acc + (item.shiftB.worked || 0), 0);
-            const totalIssues = allItems.filter(i => i.status === 'issue').length;
-            const totalMachines = allItems.length;
+            
+            // Use effectiveItems for counting machines and issues in reboques type
+            const itemsForCount = data.frenteType === 'reboques' ? effectiveItems : allItems;
+            
+            const totalIssues = itemsForCount.filter(i => i.status === 'issue').length;
+            const totalMachines = itemsForCount.length;
 
             const frentesSummary = useMemo(() => {
                 if (!allData) return [];
@@ -1733,7 +1829,42 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             plantioGroupName: ''
                         };
                     }
-                    const items = report.groups.flatMap(g => g.items);
+                    let items = report.groups.flatMap(g => g.items);
+                    
+                    // Apply reboques logic if needed for summary
+                    if (frenteTypes[frenteId] === 'reboques') {
+                        const normalizeId = (id) => id ? id.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+                        const conjuntos = new Set(
+                            items
+                                .map(i => i.conjunto)
+                                .filter(c => c && typeof c === 'string' && c.trim() !== '')
+                                .map(c => normalizeId(c))
+                        );
+                        // Filter out secondary items
+                        let primaryItems = items.filter(item => !conjuntos.has(normalizeId(item.frota)));
+                        
+                        // Merge status
+                        primaryItems = primaryItems.map(item => {
+                            if (item.conjunto && item.conjunto.trim()) {
+                                const conjuntoId = normalizeId(item.conjunto);
+                                const conjuntoItem = items.find(i => normalizeId(i.frota) === conjuntoId);
+                                
+                                const hasIssue = conjuntoItem && (
+                                    conjuntoItem.status === 'issue' || 
+                                    (conjuntoItem.shiftA?.maintenance > 0) || 
+                                    (conjuntoItem.shiftB?.maintenance > 0)
+                                );
+                                
+                                if (hasIssue) {
+                                    return { ...item, status: 'issue' };
+                                }
+                            }
+                            return item;
+                        });
+                        
+                        items = primaryItems;
+                    }
+                    
                     const totalA = items.reduce((acc, item) => acc + (item.shiftA.worked || 0), 0);
                     const totalB = items.reduce((acc, item) => acc + (item.shiftB.worked || 0), 0);
                     const totalMaintA = items.reduce((acc, item) => acc + (item.shiftA.maintenance || 0), 0);
@@ -1900,7 +2031,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                     type: 'bar',
                     data: {
                         labels: data.groups.map(g => g.name),
-                        datasets: data.frenteType === 'caminhoes' ? [{
+                        datasets: (data.frenteType === 'caminhoes' || data.frenteType === 'reboques') ? [{
                             label: 'Quantidade',
                             data: data.groups.map(g => g.items.length),
                             backgroundColor: plant.chartPrimary
@@ -2182,19 +2313,19 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        {!(data.frenteType === 'caminhoes') && (
+                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className={`bg-white p-4 rounded shadow border-l-4 ${plant.borderClass}`}>
                             <div className="text-gray-500 text-sm font-bold">TOTAL HORAS (GERAL)</div>
                             <div className="text-3xl font-bold text-gray-800">{(totalHoursA + totalHoursB).toFixed(1)}h</div>
                         </div>
                         )}
-                        {!(data.frenteType === 'caminhoes') && (
+                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className="bg-white p-4 rounded shadow border-l-4" style={{ borderColor: plant.chartPrimary }}>
                             <div className="text-gray-500 text-sm font-bold">TOTAL TURNO A</div>
                             <div className="text-3xl font-bold text-gray-800">{totalHoursA.toFixed(1)}h</div>
                         </div>
                         )}
-                        {!(data.frenteType === 'caminhoes') && (
+                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className="bg-white p-4 rounded shadow border-l-4" style={{ borderColor: plant.chartSecondary }}>
                             <div className="text-gray-500 text-sm font-bold">TOTAL TURNO B</div>
                             <div className="text-3xl font-bold text-gray-800">{totalHoursB.toFixed(1)}h</div>
@@ -2216,25 +2347,25 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                             <div className="text-3xl font-bold text-green-600">{(currentSummary.availability * 100).toFixed(0)}%</div>
                         </div>
                         )}
-                        {(data.frenteType === 'caminhoes') && (
+                        {(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className="bg-white p-4 rounded shadow border-l-4 border-gray-600">
                             <div className="text-gray-500 text-sm font-bold">TOTAL FROTA</div>
                             <div className="text-3xl font-bold text-gray-800">{totalMachines}</div>
                         </div>
                         )}
-                        {(data.frenteType === 'caminhoes') && (
+                        {(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className="bg-white p-4 rounded shadow border-l-4 border-green-600">
                             <div className="text-gray-500 text-sm font-bold">OPERACIONAIS</div>
                             <div className="text-3xl font-bold text-green-600">{totalMachines - totalIssues}</div>
                         </div>
                         )}
-                        {!(data.frenteType === 'caminhoes') && (
+                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
                             <div className="text-gray-500 text-sm font-bold" title="Disponibilidade Mecânica (Horas Trabalhadas / Total Horas)">DISP. MECÂNICA ℹ️</div>
                             <div className="text-3xl font-bold text-blue-600">{(currentSummary.mechanicalAvailability * 100).toFixed(0)}%</div>
                         </div>
                         )}
-                        {!(data.frenteType === 'caminhoes') && (
+                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
                             <div className="text-gray-500 text-sm font-bold">HORAS MANUTENÇÃO</div>
                             <div className="text-3xl font-bold text-orange-600">{currentSummary.totalMaint.toFixed(1)}h</div>
@@ -2252,7 +2383,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                 <div className="text-3xl font-bold text-cyan-600">{currentSummary.plantioYield.toFixed(2)}</div>
                             </div>
                         )}
-                        {!(data.frenteType === 'caminhoes') && (
+                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                         <div className="bg-white p-4 rounded shadow border-l-4 border-gray-500">
                              <div className="text-gray-500 text-sm font-bold" title="Média de horas trabalhadas por equipamento">MÉDIA HORAS</div>
                              <div className="text-3xl font-bold text-gray-600">{currentSummary.avgHoursPerMachine.toFixed(1)}h</div>
@@ -2262,7 +2393,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white p-4 rounded shadow">
-                            <h3 className="font-bold text-gray-700 mb-4">{data.frenteType === 'caminhoes' ? 'Quantidade por Grupo de Equipamento' : 'Horas por Grupo de Equipamento'}</h3>
+                            <h3 className="font-bold text-gray-700 mb-4">{(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') ? 'Quantidade por Grupo de Equipamento' : 'Horas por Grupo de Equipamento'}</h3>
                             <canvas ref={chartRef}></canvas>
                         </div>
                         <div className="bg-white p-4 rounded shadow">
@@ -2288,8 +2419,8 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                     <tr>
                                         <th className="px-3 py-2 border">Frota</th>
                                         <th className="px-3 py-2 border">Grupo</th>
-                                        {!(data.frenteType === 'caminhoes') && <th className="px-3 py-2 border text-center">Turno A (Trab / Manut)</th>}
-                                        {!(data.frenteType === 'caminhoes') && <th className="px-3 py-2 border text-center">Turno B (Trab / Manut)</th>}
+                                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && <th className="px-3 py-2 border text-center">Turno A (Trab / Manut)</th>}
+                                        {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && <th className="px-3 py-2 border text-center">Turno B (Trab / Manut)</th>}
                                         <th className="px-3 py-2 border text-center">Total Horas</th>
                                         <th className="px-3 py-2 border text-center">Disp. Gatec</th>
                                         <th className="px-3 py-2 border text-center">Status</th>
@@ -2297,25 +2428,76 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
-                                    {data.groups.flatMap(g => g.items.map(item => ({...item, groupName: g.name}))).map((item, idx) => {
-                                        const workedA = item.shiftA.worked || 0;
-                                        const maintA = item.shiftA.maintenance || 0;
-                                        const workedB = item.shiftB.worked || 0;
-                                        const maintB = item.shiftB.maintenance || 0;
-                                        const total = workedA + workedB;
-                                        
-                                        return (
-                                            <tr key={item.id || idx} className="hover:bg-gray-50">
-                                                <td className="px-3 py-2 border font-bold">{item.frota}</td>
+                                    {(() => {
+                                        const allItems = data.groups.flatMap(g => g.items.map(item => ({...item, groupName: g.name})));
+                                        let displayItems = allItems;
+
+                                        if (data.frenteType === 'reboques') {
+                                            // Helper to normalize IDs for comparison
+                                            const normalizeId = (id) => id ? id.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+
+                                            const conjuntos = new Set(
+                                                allItems
+                                                    .map(i => i.conjunto)
+                                                    .filter(c => c && typeof c === 'string' && c.trim() !== '')
+                                                    .map(c => normalizeId(c))
+                                            );
+                                            
+                                            // Filter out items that are conjuntos of others (hide them from main list)
+                                            displayItems = allItems.filter(item => !conjuntos.has(normalizeId(item.frota)));
+                                            
+                                            // Merge status from hidden conjunto to main item
+                                            displayItems = displayItems.map(item => {
+                                                let newItem = { ...item };
+                                                newItem.displayName = item.frota;
+                                                
+                                                if (item.conjunto && item.conjunto.trim()) {
+                                                    const conjuntoRaw = item.conjunto.trim();
+                                                    const conjuntoId = normalizeId(conjuntoRaw);
+                                                    newItem.displayName = `${item.frota} _ ${conjuntoRaw}`;
+                                                    
+                                                    // Find the conjunto item to check its status
+                                                    const conjuntoItem = allItems.find(i => normalizeId(i.frota) === conjuntoId);
+                                                    
+                                                    const hasIssue = conjuntoItem && (
+                                                        conjuntoItem.status === 'issue' || 
+                                                        (conjuntoItem.shiftA?.maintenance > 0) || 
+                                                        (conjuntoItem.shiftB?.maintenance > 0)
+                                                    );
+
+                                                    if (hasIssue) {
+                                                        newItem.status = 'issue'; // Override status to issue if conjunto has issue
+                                                        const conjuntoObs = conjuntoItem.obs || 'Problema no Conjunto (ou horas de manutenção lançadas)';
+                                                        newItem.obs = newItem.obs 
+                                                            ? `${newItem.obs} | [${conjuntoRaw}]: ${conjuntoObs}` 
+                                                            : `[${conjuntoRaw}]: ${conjuntoObs}`;
+                                                    }
+                                                }
+                                                return newItem;
+                                            });
+                                        } else {
+                                            displayItems = displayItems.map(i => ({...i, displayName: i.frota}));
+                                        }
+
+                                        return displayItems.map((item, idx) => {
+                                            const workedA = item.shiftA.worked || 0;
+                                            const maintA = item.shiftA.maintenance || 0;
+                                            const workedB = item.shiftB.worked || 0;
+                                            const maintB = item.shiftB.maintenance || 0;
+                                            const total = workedA + workedB;
+                                            
+                                            return (
+                                                <tr key={item.id || idx} className="hover:bg-gray-50">
+                                                    <td className="px-3 py-2 border font-bold">{item.displayName}</td>
                                                 <td className="px-3 py-2 border text-gray-500">{item.groupName}</td>
-                                                {!(data.frenteType === 'caminhoes') && (
+                                                {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                                                 <td className="px-3 py-2 border text-center">
                                                     <span className="font-bold text-gray-800">{workedA.toFixed(1)}h</span>
                                                     <span className="text-gray-400 mx-1">/</span>
                                                     <span className="text-red-500">{maintA.toFixed(1)}h</span>
                                                 </td>
                                                 )}
-                                                {!(data.frenteType === 'caminhoes') && (
+                                                {!(data.frenteType === 'caminhoes' || data.frenteType === 'reboques') && (
                                                 <td className="px-3 py-2 border text-center">
                                                     <span className="font-bold text-gray-800">{workedB.toFixed(1)}h</span>
                                                     <span className="text-gray-400 mx-1">/</span>
@@ -2338,7 +2520,8 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                 </td>
                                             </tr>
                                         );
-                                    })}
+                                    })
+                                })()}
                                 </tbody>
                             </table>
                         </div>
@@ -2828,7 +3011,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
 
                 } catch (e) {
                     console.error(e);
-                    alert("Erro: " + e.message);
+                    alert("Erro: " + translateError(e.message));
                 } finally {
                     setProcessing(false);
                 }
@@ -4185,11 +4368,20 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             const [loadingUsers, setLoadingUsers] = useState(false);
             const [usersError, setUsersError] = useState(null);
             const [editingUser, setEditingUser] = useState(null);
+            const [availableFrentesList, setAvailableFrentesList] = useState([]); // NEW: List of available frentes for the user's plant
             
             // Audit Logs State
             const [auditLogs, setAuditLogs] = useState([]);
             const [loadingAudit, setLoadingAudit] = useState(false);
             const [auditError, setAuditError] = useState(null);
+
+            const availableTypes = [
+                'plantadora', 
+                'distribuidora', 
+                'caminhoes', 
+                'reboques',
+                'colhedora'
+            ];
 
             const fetchAuditLogs = async () => {
                 setLoadingAudit(true);
@@ -4209,6 +4401,31 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                 }
                 setLoadingAudit(false);
             };
+
+            // Fetch frentes when editing user changes plant
+            useEffect(() => {
+                const fetchFrentesForUser = async () => {
+                    if (!editingUser || !editingUser.plant_id) {
+                        setAvailableFrentesList([]);
+                        return;
+                    }
+                    
+                    let frentesTable = 'frentes_cambui';
+                    if (editingUser.plant_id === 'panorama') frentesTable = 'frentes_panorama';
+                    else if (editingUser.plant_id === 'vale-verdao') frentesTable = 'frentes_vale_verdao';
+                    else if (editingUser.plant_id === 'floresta') frentesTable = 'frentes_floresta';
+
+                    const { data, error } = await supabaseClient
+                        .from(frentesTable)
+                        .select('name');
+                    
+                    if (data) {
+                        setAvailableFrentesList(data.map(f => f.name).sort());
+                    }
+                };
+                
+                fetchFrentesForUser();
+            }, [editingUser?.plant_id]);
 
             const handleTestAudit = async () => {
                 const { error } = await supabaseClient.from('audit_logs').insert({
@@ -4498,7 +4715,9 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                         .update({
                             plant_id: updatedUser.plant_id,
                             role: updatedUser.role,
-                            is_admin: updatedUser.is_admin
+                            is_admin: updatedUser.is_admin,
+                            allowed_types: updatedUser.allowed_types,
+                            allowed_frentes: updatedUser.allowed_frentes
                         })
                         .eq('id', updatedUser.id);
 
@@ -5248,7 +5467,9 @@ on conflict (id) do nothing;
 
 -- 6. Adiciona colunas de função e permissão
 alter table public.profiles add column if not exists role text default 'Operador';
-alter table public.profiles add column if not exists is_admin boolean default false;`}
+alter table public.profiles add column if not exists is_admin boolean default false;
+alter table public.profiles add column if not exists allowed_types text[] default null;
+alter table public.profiles add column if not exists allowed_frentes text[] default null;`}
                                                             </pre>
                                                             <button 
                                                                 onClick={() => navigator.clipboard.writeText(`-- 1. Cria a tabela de perfis públicos
@@ -5264,6 +5485,8 @@ create table if not exists public.profiles (
 -- 2. Adiciona colunas de função e permissão (IMPORTANTE: Antes das policies)
 alter table public.profiles add column if not exists role text default 'Operador';
 alter table public.profiles add column if not exists is_admin boolean default false;
+alter table public.profiles add column if not exists allowed_types text[] default null;
+alter table public.profiles add column if not exists allowed_frentes text[] default null;
 
 -- 3. Habilita segurança (RLS)
 alter table public.profiles enable row level security;
@@ -5489,6 +5712,58 @@ on conflict (id) do nothing;`)}
                                             <option value="Gerente">Gerente</option>
                                             <option value="Auditor">Auditor</option>
                                         </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Permissões de Frente (Tipos)</label>
+                                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 max-h-40 overflow-y-auto space-y-2">
+                                            {availableTypes.map(type => (
+                                                <label key={type} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={(editingUser.allowed_types || []).includes(type)}
+                                                        onChange={() => {
+                                                            const current = editingUser.allowed_types || [];
+                                                            const updated = current.includes(type)
+                                                                ? current.filter(t => t !== type)
+                                                                : [...current, type];
+                                                            setEditingUser({...editingUser, allowed_types: updated});
+                                                        }}
+                                                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                                    />
+                                                    <span className="text-sm text-gray-700">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">Se nenhum for selecionado, o usuário terá acesso a todas as frentes da unidade.</p>
+                                    </div>
+
+                                    <div className="mt-4">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Permissões de Frente (Específicas)</label>
+                                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 max-h-40 overflow-y-auto space-y-2">
+                                            {availableFrentesList.length === 0 ? (
+                                                <p className="text-xs text-gray-400 italic">Nenhuma frente encontrada para esta unidade.</p>
+                                            ) : (
+                                                availableFrentesList.map(frente => (
+                                                    <label key={frente} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={(editingUser.allowed_frentes || []).includes(frente)}
+                                                            onChange={() => {
+                                                                const current = editingUser.allowed_frentes || [];
+                                                                const updated = current.includes(frente)
+                                                                    ? current.filter(f => f !== frente)
+                                                                    : [...current, frente];
+                                                                setEditingUser({...editingUser, allowed_frentes: updated});
+                                                            }}
+                                                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                                        />
+                                                        <span className="text-sm text-gray-700">{frente}</span>
+                                                    </label>
+                                                ))
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">Se selecionado, o usuário verá APENAS estas frentes (ignora tipos).</p>
                                     </div>
 
                                     <div className="flex items-start space-x-3 bg-purple-50 p-4 rounded-lg border border-purple-100">
@@ -5718,6 +5993,11 @@ on conflict (id) do nothing;`)}
                 setModalEquipment(prev => ({ ...prev, [field]: value }));
             };
 
+            // Calculate secondary units to hide
+            const allItems = groups ? groups.flatMap(g => g.items || []) : [];
+            const normalizeId = (id) => id ? id.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+            const secondaryUnits = new Set(allItems.map(i => i.conjunto).filter(c => c).map(c => normalizeId(c)));
+
             return (
             <div className="min-h-screen bg-gray-100 pb-24">
                 <div className="bg-gray-800 text-white p-4 sticky top-0 z-20 shadow-lg flex items-center justify-between">
@@ -5753,13 +6033,18 @@ on conflict (id) do nothing;`)}
                 <div className="p-3 space-y-6">
                     {groups.map(group => {
                         if (!group || !group.items) return null;
+                        const isReboqueGroup = group.name && group.name.toLowerCase().includes('reboque');
                         return (
                         <div key={group.id} className="animate-fade-in">
                             <h3 className="bg-gray-200 text-gray-700 font-bold px-3 py-2 rounded-t-lg border border-gray-300 border-b-0 text-sm uppercase tracking-wide">
                                 {group.name}
                             </h3>
                             <div className="bg-white rounded-b-lg shadow border border-gray-200 divide-y divide-gray-100">
-                                {group.items.map(item => (
+                                {group.items.map(item => {
+                                    // Skip secondary units if they are attached to another unit
+                                    if (secondaryUnits.has(normalizeId(item.frota))) return null;
+
+                                    return (
                                     <div key={item.id} className="p-3">
                                         {(() => {
                                             if (!item) return null;
@@ -5767,27 +6052,33 @@ on conflict (id) do nothing;`)}
                                             if (!shiftData) return <div className="text-red-500 text-xs font-bold p-2 bg-red-50 rounded">Erro: Dados do turno não encontrados para {item.frota}</div>;
                                             
                                             // Safe access to frenteType
-                                            const currentType = frenteType || 'plantadora';
+                                            const currentType = (frenteType || 'plantadora').toLowerCase();
+                                            const isSimpleView = currentType === 'caminhoes' || currentType.includes('reboque') || isReboqueGroup;
                                             
                                             return (
                                             <>
                                             <div className="flex items-center justify-between mb-2">
-                                                <span className="font-black text-lg text-gray-800 bg-gray-100 px-2 rounded">
+                                                <span className="font-black text-lg text-gray-800 bg-gray-100 px-2 rounded flex items-center">
                                                     {item.frota}
+                                                    {item.conjunto && (
+                                                        <span className="ml-2 text-sm text-gray-600 font-bold border-l-2 border-gray-300 pl-2">
+                                                            {item.conjunto}
+                                                        </span>
+                                                    )}
                                                 </span>
-                                                {currentType !== 'caminhoes' && (
+                                                {!isSimpleView && (
                                                     <span className="text-xs font-bold text-gray-400">
                                                         Trab: {(shiftData.worked || 0).toFixed(1)}h
                                                     </span>
                                                 )}
-                                                {currentType === 'caminhoes' && (
+                                                {isSimpleView && (
                                                     <span className={`text-xs font-bold px-2 py-0.5 rounded ${item.status === 'issue' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
                                                         {item.status === 'issue' ? 'Com Defeito' : 'Operando'}
                                                     </span>
                                                 )}
                                             </div>
                                             
-                                            {currentType === 'caminhoes' ? (
+                                            {isSimpleView ? (
                                                 <div className="mt-2">
                                                     <button 
                                                         onClick={() => handleOpenModal(group, item)}
@@ -5853,7 +6144,8 @@ on conflict (id) do nothing;`)}
                                             );
                                         })()}
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )})}
@@ -5936,6 +6228,23 @@ on conflict (id) do nothing;`)}
             );
         };
 
+        const translateError = (msg) => {
+            if (!msg) return 'Erro desconhecido';
+            const m = msg.toLowerCase();
+            if (m.includes('invalid login credentials')) return 'Email ou senha incorretos.';
+            if (m.includes('user not found')) return 'Usuário não encontrado.';
+            if (m.includes('email not confirmed')) return 'Email não confirmado. Verifique sua caixa de entrada.';
+            if (m.includes('password should be')) return 'A senha deve ter pelo menos 6 caracteres.';
+            if (m.includes('already registered')) return 'Este email já está cadastrado.';
+            if (m.includes('network request failed')) return 'Falha na conexão. Verifique sua internet.';
+            if (m.includes('fetch failed')) return 'Falha ao conectar com o servidor.';
+            if (m.includes('quota exceeded')) return 'Cota de requisições excedida.';
+            if (m.includes('relation') && m.includes('does not exist')) return 'Tabela não encontrada no banco de dados.';
+            if (m.includes('violates row-level security policy')) return 'Permissão negada. Você não tem acesso a este recurso.';
+            if (m.includes('duplicate key value')) return 'Registro duplicado.';
+            return msg;
+        };
+
         const Auth = ({ plants }) => {
             const [isLogin, setIsLogin] = useState(true);
             const [loading, setLoading] = useState(false);
@@ -5984,7 +6293,7 @@ on conflict (id) do nothing;`)}
                         }
                     }
                 } catch (err) {
-                    setError(err.message);
+                    setError(translateError(err.message));
                 } finally {
                     setLoading(false);
                 }
@@ -6615,8 +6924,31 @@ on conflict (id) do nothing;`)}
                             // Initialize with empty reports for registered frentes
                             if (frentesData) {
                                 frentesData.forEach(f => {
-                                    newData[f.name] = {}; 
-                                    if (f.type) newTypes[f.name] = f.type;
+                                    // PERMISSION CHECK
+                                    const type = f.type;
+                                    
+                                    let isAllowed = isAdmin || (userProfile?.role === 'Gerente');
+
+                                    if (!isAllowed) {
+                                        const allowedFrentes = userProfile?.allowed_frentes || [];
+                                        const allowedTypes = userProfile?.allowed_types || [];
+                                        
+                                        if (allowedFrentes.length > 0) {
+                                             // Specific frentes check (by name)
+                                             isAllowed = allowedFrentes.includes(f.name);
+                                        } else if (allowedTypes.length > 0) {
+                                             // Type check
+                                             isAllowed = allowedTypes.includes(type);
+                                        } else {
+                                             // Default allow if no restrictions
+                                             isAllowed = true; 
+                                        }
+                                    }
+
+                                    if (isAllowed) {
+                                        newData[f.name] = {}; 
+                                        if (f.type) newTypes[f.name] = f.type;
+                                    }
                                 });
                             }
                             setFrenteTypes(newTypes);
@@ -6628,8 +6960,15 @@ on conflict (id) do nothing;`)}
                                     const reportPlantId = report.plantId || 'cambui';
                                     
                                     if (reportPlantId === plantId) {
-                                        if (!newData[row.frente_id]) newData[row.frente_id] = {};
-                                        newData[row.frente_id][row.date] = report;
+                                        // If Admin, show even if not in registry (legacy data)
+                                        if (isAdmin && !newData[row.frente_id]) {
+                                            newData[row.frente_id] = {};
+                                        }
+
+                                        // Only add if allowed (initialized in newData)
+                                        if (newData[row.frente_id]) {
+                                            newData[row.frente_id][row.date] = report;
+                                        }
                                     }
                                 });
                             }
@@ -6656,7 +6995,7 @@ on conflict (id) do nothing;`)}
                     setIsLoading(false);
                 };
                 loadAll();
-            }, [plantId, refreshTrigger]); // Reload when plant changes or refresh triggered
+            }, [plantId, refreshTrigger, userProfile, isAdmin]); // Reload when plant, user, or refresh changes
 
             // Real-time Subscription to Changes
             useEffect(() => {
@@ -6727,6 +7066,7 @@ on conflict (id) do nothing;`)}
 
             const [isSaving, setIsSaving] = useState(false);
             const [notification, setNotification] = useState(null);
+            const [saveError, setSaveError] = useState(null);
 
             // Manual Save Function
             const handleSave = async () => {
@@ -6752,11 +7092,16 @@ on conflict (id) do nothing;`)}
                                 if (workedB < 0) errorMsg = `Frota ${item.frota} (Turno B): Horas Negativas (${workedB.toFixed(1)}h)!`;
                                 if (workedB > 12.01) errorMsg = `Frota ${item.frota} (Turno B): Excede 12h (${workedB.toFixed(1)}h)!`;
                             }
+
+                            // Mandatory Observation for Issue Status
+                            if (item.status === 'issue' && (!item.obs || !item.obs.trim())) {
+                                errorMsg = `Frota ${item.frota}: Status 'Com Defeito' exige uma observação!`;
+                            }
                         });
                     });
 
                     if (errorMsg) {
-                        alert(`⚠️ IMPOSSÍVEL SALVAR\n\nErro encontrado: ${errorMsg}\n\nVerifique se:\n1. O Horímetro Final é menor que o Inicial.\n2. O total de horas excede 12h.\n\nCorrija antes de salvar.`);
+                        setSaveError({ title: 'IMPOSSÍVEL SALVAR', message: errorMsg });
                         return;
                     }
                 }
@@ -7762,25 +8107,71 @@ on conflict (id) do nothing;`)}
                     return;
                 }
 
+                // Check for reboques type logic
+                const type = (frenteTypes[activeFrenteId] || 'plantadora').toLowerCase();
+                const isReboques = type === 'reboques' || type.includes('reboque');
+
                 // Generate Plain Text for WhatsApp
                 let plainText = `*Usina ${plant.name}*\n`;
                 plainText += `*Frente ${activeFrenteId}*\n\n`;
 
-                report.groups.forEach(group => {
-                    if (!group.items || group.items.length === 0) return;
-                    
-                    plainText += `*${group.name}*\n`;
-                    
-                    group.items.forEach(item => {
-                        if (item.status === 'issue') {
-                             const obs = item.obs ? item.obs : 'motivo de parada';
-                             plainText += `❌ ${item.frota} -> ${obs.toUpperCase()}\n`;
-                        } else {
-                             plainText += `✅ ${item.frota}\n`;
-                        }
+                if (isReboques) {
+                     // Reboques Logic: Hide secondary, merge status
+                     const allItems = report.groups.flatMap(g => g.items || []);
+                     const normalizeId = (id) => id ? id.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+                     const conjuntos = new Set(allItems.map(i => i.conjunto).filter(c => c).map(c => normalizeId(c)));
+
+                     report.groups.forEach(group => {
+                        if (!group.items || group.items.length === 0) return;
+                        
+                        plainText += `*${group.name}*\n`;
+                        
+                        group.items.forEach(item => {
+                             // Skip if it is a secondary unit
+                             if (conjuntos.has(normalizeId(item.frota))) return;
+
+                             let status = item.status;
+                             let obs = item.obs;
+                             let displayName = item.frota;
+                             
+                             // Merge with secondary if exists
+                             if (item.conjunto) {
+                                 displayName = `${item.frota} _ ${item.conjunto}`;
+                                 const conjItem = allItems.find(i => normalizeId(i.frota) === normalizeId(item.conjunto));
+                                 if (conjItem && conjItem.status === 'issue') {
+                                     status = 'issue';
+                                     obs = obs ? `${obs} | [${item.conjunto}]: ${conjItem.obs}` : `[${item.conjunto}]: ${conjItem.obs}`;
+                                 }
+                             }
+
+                             if (status === 'issue') {
+                                 const finalObs = obs ? obs : 'motivo de parada';
+                                 plainText += `❌ ${displayName} -> ${finalObs.toUpperCase()}\n`;
+                             } else {
+                                 plainText += `✅ ${displayName}\n`;
+                             }
+                        });
+                        plainText += '\n';
+                     });
+
+                } else {
+                    // Standard Logic
+                    report.groups.forEach(group => {
+                        if (!group.items || group.items.length === 0) return;
+                        
+                        plainText += `*${group.name}*\n`;
+                        
+                        group.items.forEach(item => {
+                            if (item.status === 'issue') {
+                                const obs = item.obs ? item.obs : 'motivo de parada';
+                                plainText += `❌ ${item.frota} -> ${obs.toUpperCase()}\n`;
+                            } else {
+                                plainText += `✅ ${item.frota}\n`;
+                            }
+                        });
+                        plainText += '\n';
                     });
-                    plainText += '\n';
-                });
+                }
                 
                 // Fallback copy function
                 const fallbackCopyTextToClipboard = (text) => {
@@ -7982,6 +8373,32 @@ on conflict (id) do nothing;`)}
                                 </div>
                             </div>
                         )}
+                        {saveError && (
+                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4 animate-fade-in">
+                                <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden border-2 border-red-600">
+                                    <div className="bg-red-600 p-4 text-white flex items-center">
+                                        <Icons.AlertTriangle size={24} className="mr-2" />
+                                        <h3 className="font-bold text-lg">{saveError.title}</h3>
+                                    </div>
+                                    <div className="p-6 text-center">
+                                        <p className="text-gray-800 text-lg mb-4 font-bold">
+                                            {saveError.message}
+                                        </p>
+                                        <p className="text-gray-600 text-sm">
+                                            Verifique os dados e tente novamente.
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-gray-50 flex justify-center">
+                                        <button 
+                                            onClick={() => setSaveError(null)}
+                                            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded shadow"
+                                        >
+                                            Entendi
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -8065,6 +8482,17 @@ on conflict (id) do nothing;`)}
                                                 className="form-radio text-yellow-600 h-4 w-4"
                                             />
                                             <span className="text-gray-800">Reboques</span>
+                                        </label>
+                                        <label className="flex items-center space-x-2 cursor-pointer">
+                                            <input 
+                                                type="radio" 
+                                                name="frenteType"
+                                                value="colhedora"
+                                                checked={newFrenteType === 'colhedora'}
+                                                onChange={(e) => setNewFrenteType(e.target.value)}
+                                                className="form-radio text-purple-600 h-4 w-4"
+                                            />
+                                            <span className="text-gray-800">Colhedora</span>
                                         </label>
                                     </div>
                                 </div>
