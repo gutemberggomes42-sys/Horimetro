@@ -1187,17 +1187,31 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
             const isCaminhoes = frenteType === 'caminhoes' || frenteType === 'reboques';
             const isReboques = frenteType === 'reboques';
 
+            // Filter out items that are used as "conjunto" in other items
+            const visibleItems = useMemo(() => {
+                if (!isReboques) return group.items;
+                
+                const conjuntos = new Set(
+                    group.items
+                        .map(i => i.conjunto)
+                        .filter(c => c && typeof c === 'string' && c.trim() !== '')
+                        .map(c => c.trim().toUpperCase())
+                );
+                
+                return group.items.filter(item => !conjuntos.has(item.frota ? item.frota.trim().toUpperCase() : ''));
+            }, [group.items, isReboques]);
+
             const handleRowChange = (equipmentId, field, value) => {
                 onUpdateEquipment(group.id, equipmentId, field, value);
             };
 
-            const totalShiftA = group.items.reduce((acc, item) => acc + (item.shiftA.worked || 0), 0);
-            const totalShiftB = group.items.reduce((acc, item) => acc + (item.shiftB.worked || 0), 0);
-            const totalMaintA = group.items.reduce((acc, item) => acc + (item.shiftA.maintenance || 0), 0);
-            const totalMaintB = group.items.reduce((acc, item) => acc + (item.shiftB.maintenance || 0), 0);
+            const totalShiftA = visibleItems.reduce((acc, item) => acc + (item.shiftA.worked || 0), 0);
+            const totalShiftB = visibleItems.reduce((acc, item) => acc + (item.shiftB.worked || 0), 0);
+            const totalMaintA = visibleItems.reduce((acc, item) => acc + (item.shiftA.maintenance || 0), 0);
+            const totalMaintB = visibleItems.reduce((acc, item) => acc + (item.shiftB.maintenance || 0), 0);
             const totalAB = totalShiftA + totalShiftB;
             
-            const count = group.items.length;
+            const count = visibleItems.length;
             const avgShiftA = count > 0 ? totalShiftA / count : 0;
             const avgShiftB = count > 0 ? totalShiftB / count : 0;
             const avgMaintA = count > 0 ? totalMaintA / count : 0;
@@ -1232,7 +1246,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {group.items.map((item, index) => (
+                                    {visibleItems.map((item, index) => (
                                             <EquipmentRow 
                                                 key={item.id} 
                                                 equipment={item} 
@@ -1243,7 +1257,7 @@ create policy "Public Access" on frentes_floresta for all using (true) with chec
                                                 onDelete={(id) => onDeleteEquipment(group.id, id)}
                                                 onTransfer={(id) => onTransferEquipment(group.id, id)}
                                                 onSqlError={onSqlError}
-                                                isLast={index === group.items.length - 1}
+                                                isLast={index === visibleItems.length - 1}
                                                 isAppMode={isAppMode}
                                                 frenteType={frenteType}
                                                 frenteId={frenteId}
