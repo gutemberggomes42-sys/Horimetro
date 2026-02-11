@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Horimetro</string>
+    <string name="title_activity_main">Horimetro</string>
+    <string name="package_name">com.horimetro.app</string>
+    <string name="custom_url_scheme">com.horimetro.app</string>
+</resources>

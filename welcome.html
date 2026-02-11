@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bem-vindo ao Horímetro | Ggomes-Log</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-green': '#047857',
+                        'brand-dark': '#1f2937',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4">
+        
+        <!-- Main Card -->
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all hover:scale-[1.01] duration-300">
+            
+            <!-- Header with Brand -->
+            <div class="bg-gray-800 p-8 text-center relative overflow-hidden">
+                <div class="relative z-10">
+                    <h1 class="text-4xl font-black text-white mb-2 tracking-tight">HORÍMETRO</h1>
+                    <p class="text-gray-400 font-medium">Sistema Avançado de Gestão de Frotas</p>
+                    <div class="mt-4 inline-block px-4 py-1 bg-gray-700 rounded-full text-xs font-bold text-gray-300 tracking-widest border border-gray-600">
+                        GGOMES-LOG
+                    </div>
+                </div>
+                <!-- Decorative Circle -->
+                <div class="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-green-600 rounded-full opacity-10 blur-3xl"></div>
+                <div class="absolute bottom-0 left-0 -ml-16 -mb-16 w-64 h-64 bg-blue-600 rounded-full opacity-10 blur-3xl"></div>
+            </div>
+
+            <!-- Confirmation Message -->
+            <div class="bg-green-50 border-b border-green-100 p-6 flex items-center justify-center space-x-3">
+                <i data-lucide="check-circle-2" class="text-green-600 w-8 h-8"></i>
+                <div class="text-center">
+                    <h2 class="text-xl font-bold text-green-800">Email Confirmado com Sucesso!</h2>
+                    <p class="text-green-700 text-sm">Sua conta já está ativa e pronta para uso.</p>
+                </div>
+            </div>
+
+            <!-- System Summary -->
+            <div class="p-8">
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
+                    <i data-lucide="layout-grid" class="w-5 h-5 mr-2 text-gray-500"></i>
+                    Resumo do Sistema
+                </h3>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Feature 1 -->
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-blue-100 p-2 rounded-lg text-blue-600">
+                            <i data-lucide="factory" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-700">Multi-Usina</h4>
+                            <p class="text-sm text-gray-500 leading-snug mt-1">
+                                Suporte integrado para Cambuí, Panorama, Vale do Verdão e Floresta.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Feature 2 -->
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-orange-100 p-2 rounded-lg text-orange-600">
+                            <i data-lucide="clock" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-700">Controle de Turnos</h4>
+                            <p class="text-sm text-gray-500 leading-snug mt-1">
+                                Lançamento preciso de horímetros para turnos A e B com cálculo automático.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Feature 3 -->
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-purple-100 p-2 rounded-lg text-purple-600">
+                            <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-700">Dashboards</h4>
+                            <p class="text-sm text-gray-500 leading-snug mt-1">
+                                Indicadores de rendimento e disponibilidade em tempo real.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Feature 4 -->
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-green-100 p-2 rounded-lg text-green-600">
+                            <i data-lucide="database" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-700">Dados Seguros</h4>
+                            <p class="text-sm text-gray-500 leading-snug mt-1">
+                                Sincronização automática na nuvem com isolamento por unidade.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CTA Button -->
+                <div class="mt-10">
+                    <a href="https://gutemberggomes42-sys.github.io/Horimetro/" class="block w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-lg shadow-lg text-center transition-all transform hover:-translate-y-1 flex items-center justify-center group">
+                        <span>Acessar o Sistema Agora</span>
+                        <i data-lucide="arrow-right" class="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1"></i>
+                    </a>
+                    <p class="text-center text-xs text-gray-400 mt-4">
+                        Ao clicar, você será redirecionado para a tela de login.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="bg-gray-50 p-4 text-center border-t border-gray-100">
+                <p class="text-xs text-gray-400 font-semibold">Desenvolvido por Ggomes-Log &copy; 2026</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Initialize Icons -->
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

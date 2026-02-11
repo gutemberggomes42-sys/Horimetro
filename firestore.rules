@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Regras para a coleção 'reports'
+    match /reports/{reportId} {
+      // Qualquer usuário autenticado pode ler
+      allow read: if request.auth != null;
+      
+      // Apenas o admin pode escrever (criar, atualizar, deletar)
+      // Substitua pelo email correto do admin se mudar
+      allow write: if request.auth != null && request.auth.token.email == 'gutemberggg10@gmail.com';
+    }
+    
+    // Regra padrão: bloqueia tudo o resto
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
