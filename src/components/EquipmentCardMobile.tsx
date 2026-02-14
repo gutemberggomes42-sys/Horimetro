@@ -115,6 +115,40 @@ export const EquipmentCardMobile: React.FC<EquipmentCardMobileProps> = ({ equipm
               <AlertCircle className="absolute right-2 top-2.5 text-red-500" size={16} />
             )}
           </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleChange('obs', 'Campo')}
+              className={clsx("px-2 py-1 text-xs rounded border",
+                equipment.obs === 'Campo' ? "bg-green-600 text-white border-green-700" : "bg-white text-gray-700 border-gray-300")}
+            >
+              Campo
+            </button>
+            <button
+              type="button"
+              onClick={() => handleChange('obs', 'Oficina')}
+              className={clsx("px-2 py-1 text-xs rounded border",
+                equipment.obs === 'Oficina' ? "bg-red-600 text-white border-red-700" : "bg-white text-gray-700 border-gray-300")}
+            >
+              Oficina
+            </button>
+            <button
+              type="button"
+              onClick={() => handleChange('obs', 'Base')}
+              className={clsx("px-2 py-1 text-xs rounded border",
+                equipment.obs === 'Base' ? "bg-gray-700 text-white border-gray-800" : "bg-white text-gray-700 border-gray-300")}
+            >
+              Base
+            </button>
+            <button
+              type="button"
+              onClick={() => handleChange('obs', 'Apoio')}
+              className={clsx("px-2 py-1 text-xs rounded border",
+                equipment.obs === 'Apoio' ? "bg-purple-700 text-white border-purple-800" : "bg-white text-gray-700 border-gray-300")}
+            >
+              Apoio
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -109,6 +109,26 @@ export const initialData: ReportData = {
                 obs: 'Campo'
             }
         ]
+    },
+    {
+      id: 'distribuidora',
+      name: 'Distribuidora',
+      items: []
+    },
+    {
+      id: 'caminhoes',
+      name: 'Caminhões',
+      items: []
+    },
+    {
+      id: 'reboques',
+      name: 'Reboques',
+      items: []
+    },
+    {
+      id: 'apoio',
+      name: 'Apoio',
+      items: []
     }
   ]
 };

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { ReportData } from './types';
+import { ReportData, EquipmentGroup, Equipment } from './types';
 import { EquipmentGroupTable } from './components/EquipmentGroupTable';
 import { PLANTS, Plant } from './constants/plants';
 import { Wifi, WifiOff, LogOut } from 'lucide-react';
@@ -113,6 +113,23 @@ function App() {
 
   const [data, setData] = useState<ReportData | null>(null);
 
+  const REQUIRED_GROUPS: { id: string; name: string }[] = [
+    { id: 'plantadora', name: 'Trator Plantadora' },
+    { id: 'distribuidora', name: 'Distribuidora' },
+    { id: 'caminhoes', name: 'Caminhões' },
+    { id: 'reboques', name: 'Reboques' },
+    { id: 'apoio', name: 'Apoio' },
+  ];
+
+  const ensureRequiredGroups = (incoming: ReportData): ReportData => {
+    const existingIds = new Set(incoming.groups.map(g => g.id));
+    const missing: EquipmentGroup[] = REQUIRED_GROUPS
+      .filter(g => !existingIds.has(g.id))
+      .map(g => ({ id: g.id, name: g.name, items: [] }));
+    if (missing.length === 0) return incoming;
+    return { ...incoming, groups: [...incoming.groups, ...missing] };
+  };
+
   // Subscribe to Firestore data
   useEffect(() => {
     if (!user) return; // Don't subscribe if not logged in
@@ -122,12 +139,18 @@ function App() {
     const reportId = 'daily-report'; 
     
     const unsubscribe = reportService.subscribeToReport(reportId, (newData) => {
-      setData(newData);
+      const ensured = ensureRequiredGroups(newData);
+      setData(ensured);
+      if (isAdmin && ensured !== newData) {
+        reportService.updateReport(reportId, ensured).catch(error => {
+          console.error("Error ensuring required groups:", error);
+        });
+      }
       setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isAdmin]);
 
   const updateEquipment = (groupId: string, equipmentId: string, field: string, value: any) => {
     if (!data) return;
@@ -138,6 +161,28 @@ function App() {
     // Send to Firestore (fire and forget to support offline mode without blocking)
     reportService.updateReport('daily-report', newData).catch(error => {
       console.error("Error updating report:", error);
+    });
+  };
+
+  const addEquipment = (groupId: string) => {
+    if (!data) return;
+    if (!isAdmin) return;
+    const newItemId = `${Date.now()}`;
+    const defaultObs = groupId === 'apoio' ? 'Apoio' : '';
+    const newItem: Equipment = {
+      id: newItemId,
+      frota: newItemId,
+      shiftA: { initial: null, final: null, worked: 0 },
+      shiftB: { initial: null, final: null, worked: 0 },
+      totalAB: 0,
+      status: 'ok',
+      obs: defaultObs
+    };
+    const newGroups = data.groups.map(g => g.id === groupId ? { ...g, items: [...g.items, newItem] } : g);
+    const newData = { ...data, groups: newGroups };
+    setData(newData);
+    reportService.updateReport('daily-report', newData).catch(error => {
+      console.error("Error adding equipment:", error);
     });
   };
 
@@ -156,6 +201,49 @@ function App() {
     } catch (error) {
       console.error("Error signing out:", error);
     }
+  };
+  
+  const buildWhatsAppReport = (): string => {
+    if (!data) return '';
+    const lines: string[] = [];
+    lines.push(`*Usina ${selectedPlant.name}*`);
+    lines.push(`*Frente ${data.id}*`);
+    lines.push('');
+    data.groups.forEach(group => {
+      const total = group.items.length;
+      const okCount = group.items.filter(i => i.status === 'ok').length;
+      const issueCount = group.items.filter(i => i.status === 'issue').length;
+      const okPct = total > 0 ? Math.round((okCount / total) * 100) : 0;
+      const issuePct = total > 0 ? Math.round((issueCount / total) * 100) : 0;
+      lines.push(`*${group.name}* (✅ ${okPct}% | ❌ ${issuePct}%)`);
+      const baseIssues = group.items.filter(i => i.status === 'issue');
+      if (baseIssues.length > 0) {
+        lines.push(`📍 *BASE*`);
+        baseIssues.forEach(i => {
+          const obs = i.obs && i.obs.trim() !== '' ? i.obs : 'Sem observação';
+          lines.push(`❌ ${i.frota} -> ${obs}`);
+        });
+      }
+      const campoOk = group.items.filter(i => i.status === 'ok');
+      if (campoOk.length > 0) {
+        lines.push(`📍 *CAMPO*`);
+        campoOk.forEach(i => {
+          lines.push(`✅ ${i.frota}`);
+        });
+      }
+      lines.push('');
+    });
+    return lines.join('\n');
+  };
+  
+  const handleCopyWhatsApp = () => {
+    const text = buildWhatsAppReport();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      alert('Relatório copiado para a área de transferência');
+    }).catch(() => {
+      alert('Não foi possível copiar o relatório');
+    });
   };
 
   if (isAuthChecking) {
@@ -219,6 +307,13 @@ function App() {
               ))}
             </select>
           </div>
+          <button
+            onClick={handleCopyWhatsApp}
+            className="text-xs font-bold px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+            title="Copiar relatório (WhatsApp/Word)"
+          >
+            Copiar Relatório
+          </button>
         </div>
 
         {/* Header Section */}
@@ -247,6 +342,15 @@ function App() {
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
+            </div>
+            <div className="mt-2">
+              <button
+                onClick={handleCopyWhatsApp}
+                className="w-full text-xs font-bold px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+                title="Copiar relatório (WhatsApp/Word)"
+              >
+                Copiar Relatório
+              </button>
             </div>
             {!isAdmin && (
               <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded text-center">
@@ -306,6 +410,7 @@ function App() {
               key={group.id} 
               group={group} 
               onUpdateEquipment={updateEquipment}
+              onAddEquipment={addEquipment}
               readOnly={!isAdmin}
             />
           ))}

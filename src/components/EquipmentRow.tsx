@@ -89,7 +89,14 @@ export const EquipmentRow: React.FC<EquipmentRowProps> = ({ equipment, onChange,
           value={equipment.obs}
           onChange={(e) => handleChange('obs', e.target.value)}
           disabled={readOnly}
+          list={`obs-options-${equipment.id}`}
         />
+        <datalist id={`obs-options-${equipment.id}`}>
+          <option value="Campo" />
+          <option value="Oficina" />
+          <option value="Base" />
+          <option value="Apoio" />
+        </datalist>
       </td>
     </tr>
   );

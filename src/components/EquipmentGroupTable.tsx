@@ -6,10 +6,11 @@ import { EquipmentCardMobile } from './EquipmentCardMobile';
 interface EquipmentGroupTableProps {
   group: EquipmentGroup;
   onUpdateEquipment: (groupId: string, equipmentId: string, field: string, value: any) => void;
+  onAddEquipment: (groupId: string) => void;
   readOnly?: boolean;
 }
 
-export const EquipmentGroupTable: React.FC<EquipmentGroupTableProps> = ({ group, onUpdateEquipment, readOnly = false }) => {
+export const EquipmentGroupTable: React.FC<EquipmentGroupTableProps> = ({ group, onUpdateEquipment, onAddEquipment, readOnly = false }) => {
   const handleRowChange = (equipmentId: string, field: string, value: any) => {
     if (readOnly) return;
     onUpdateEquipment(group.id, equipmentId, field, value);
@@ -30,8 +31,17 @@ export const EquipmentGroupTable: React.FC<EquipmentGroupTableProps> = ({ group,
   return (
     <div className="mb-6 border-2 border-orange-500 rounded-lg overflow-hidden">
       {/* Group Header */}
-      <div className="bg-header-bg text-center font-bold border-b border-black py-2 text-lg">
-        {group.name}
+      <div className="bg-header-bg border-b border-black py-2 px-3 flex items-center justify-between">
+        <div className="text-center font-bold text-lg flex-1">{group.name}</div>
+        {!readOnly && (
+          <button
+            className="text-xs font-bold px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700"
+            onClick={() => onAddEquipment(group.id)}
+            title="Adicionar nova frota ao grupo"
+          >
+            Adicionar Frota
+          </button>
+        )}
       </div>
 
       {/* Desktop Table View */}
@@ -121,6 +131,15 @@ export const EquipmentGroupTable: React.FC<EquipmentGroupTableProps> = ({ group,
 
       {/* Mobile Card View */}
       <div className="md:hidden bg-gray-100 p-2">
+        {!readOnly && (
+          <button
+            className="mb-2 w-full text-xs font-bold px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+            onClick={() => onAddEquipment(group.id)}
+            title="Adicionar nova frota ao grupo"
+          >
+            Adicionar Frota
+          </button>
+        )}
         {group.items.map((item) => (
           <EquipmentCardMobile 
             key={item.id} 
