@@ -4477,7 +4477,8 @@
                             };
                             
                             // Separate harvesters
-                            const colhedorasAll = equipamentos.filter(e => isColhedora(e.equipo));
+                            let colhedorasAll = equipamentos.filter(e => isColhedora(e.equipo));
+                            if (colhedorasAll.length === 0) colhedorasAll = equipamentos;
                             const colhedorasDisponiveis = colhedorasAll.filter(e => e.disponivel === 1);
                             
                             // Get number of active tractors (from UI)
