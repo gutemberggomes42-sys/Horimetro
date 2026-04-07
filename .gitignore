@@ -1,9 +1,14 @@
 node_modules/
 dist/
+.minimax/
+
+*.apk
+*.zip
+*.keystore
+
 **/jdk/
 **/sdk/
 **/build/
-*.apk
-*.zip
+
 .DS_Store
 Thumbs.db
