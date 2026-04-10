@@ -4,11 +4,16 @@ Projeto em HTML único (standalone).
 
 ## Rodar
 
-- Abra [index.html](file:///C:/Users/gutem/OneDrive/Desktop/Horimetro/index.html) no navegador.
+- Abra `index.html` no navegador.
+
+## Build
+
+- `npm run build` prepara a versão standalone em `dist/`.
+- `npm run build:android` prepara `dist/`, sincroniza o Capacitor e gera o APK Android.
 
 ## Safra → Potencial
 
-- A tela **Potencial** é carregada de [potencial.html](file:///C:/Users/gutem/OneDrive/Desktop/Horimetro/potencial.html) e sincroniza dados no Supabase por `plantId`.
+- A tela **Potencial** é carregada de `potencial.html` e sincroniza dados no Supabase por `plantId`.
 
 ### SQL (Supabase)
 
@@ -37,4 +42,3 @@ on potencial_data for update
 using (true)
 with check (true);
 ```
-
