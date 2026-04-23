@@ -3502,6 +3502,7 @@
                         isDirty: false,
                         autoSaveTimeoutId: null,
                         scheduledReportsIntervalId: null,
+                        remotePollIntervalId: null,
                         chartDataLabelsRegistered: false,
                         chartDataLabelsLoading: false
                     },
@@ -3513,6 +3514,7 @@
                         this.setupEventListeners();
                         this.checkStorage();
                         this.loadSavedData();
+                        this.startRemoteSyncWatcher();
                         this.setupHelp();
                         this.setupAutoBackup();
                         this.setupScheduledReportsRunner();
@@ -3525,6 +3527,54 @@
 
                     getConfigStorageKey: function() {
                         return `${this.config.storage.storageKey}_config`;
+                    },
+
+                    getDataStorageKey: function() {
+                        return `${this.config.storage.storageKey}_${potencialPlantId}`;
+                    },
+
+                    getSyncStateKey: function() {
+                        return `${this.getDataStorageKey()}_sync`;
+                    },
+
+                    getAutoBackupStorageKey: function() {
+                        return `${this.getDataStorageKey()}_autoBackup`;
+                    },
+
+                    readSyncState: function() {
+                        const fallback = {
+                            pendingRemoteSync: false,
+                            lastLocalUpdatedAt: null,
+                            lastRemoteUpdatedAt: null
+                        };
+
+                        try {
+                            const raw = localStorage.getItem(this.getSyncStateKey());
+                            if (!raw) return fallback;
+                            const parsed = JSON.parse(raw);
+                            if (!parsed || typeof parsed !== 'object') return fallback;
+                            return {
+                                pendingRemoteSync: !!parsed.pendingRemoteSync,
+                                lastLocalUpdatedAt: parsed.lastLocalUpdatedAt || null,
+                                lastRemoteUpdatedAt: parsed.lastRemoteUpdatedAt || null
+                            };
+                        } catch (error) {
+                            console.warn('Falha ao ler estado de sincronização:', error);
+                            return fallback;
+                        }
+                    },
+
+                    writeSyncState: function(patch = {}) {
+                        const next = {
+                            ...this.readSyncState(),
+                            ...patch
+                        };
+                        try {
+                            localStorage.setItem(this.getSyncStateKey(), JSON.stringify(next));
+                        } catch (error) {
+                            console.warn('Falha ao salvar estado de sincronização:', error);
+                        }
+                        return next;
                     },
 
                     loadConfig: function() {
@@ -3613,14 +3663,52 @@
                         }, 800);
                     },
 
-                    persistLocalSnapshot: function() {
+                    persistLocalSnapshot: function(options = {}) {
                         try {
-                            localStorage.setItem(this.config.storage.storageKey, JSON.stringify(this.data));
+                            localStorage.setItem(this.getDataStorageKey(), JSON.stringify(this.data));
+                            const syncPatch = {
+                                lastLocalUpdatedAt: this.data.lastUpdated || new Date().toISOString()
+                            };
+                            if (options.markPending === true) syncPatch.pendingRemoteSync = true;
+                            if (options.pendingRemoteSync === false) syncPatch.pendingRemoteSync = false;
+                            if (options.lastRemoteUpdatedAt) syncPatch.lastRemoteUpdatedAt = options.lastRemoteUpdatedAt;
+                            this.writeSyncState(syncPatch);
                             return true;
                         } catch (error) {
                             console.warn('Erro ao salvar localmente:', error);
                             return false;
                         }
+                    },
+
+                    clearPendingRemoteSync: function(remoteUpdatedAt = null) {
+                        this.writeSyncState({
+                            pendingRemoteSync: false,
+                            lastRemoteUpdatedAt: remoteUpdatedAt || this._remoteUpdatedAt || null
+                        });
+                    },
+
+                    readLocalDataEntry: function() {
+                        if (!this.config.storage.storageAvailable) return null;
+                        const candidateKeys = [this.getDataStorageKey(), this.config.storage.storageKey];
+
+                        for (let i = 0; i < candidateKeys.length; i++) {
+                            const key = candidateKeys[i];
+                            if (!key) continue;
+                            const savedData = localStorage.getItem(key);
+                            if (!savedData) continue;
+                            try {
+                                const parsed = JSON.parse(savedData);
+                                return {
+                                    source: 'local',
+                                    data: parsed,
+                                    timestamp: this.getDataTimestamp(parsed, this.readSyncState().lastLocalUpdatedAt)
+                                };
+                            } catch (error) {
+                                console.error('Error parsing saved data:', error);
+                            }
+                        }
+
+                        return null;
                     },
 
                     syncCurrentUIState: function(options = {}) {
@@ -3642,6 +3730,60 @@
                         }
 
                         return true;
+                    },
+
+                    applyLoadedData: function(parsedData) {
+                        try {
+                            if (parsedData && typeof parsedData === 'object') {
+                                for (const key in parsedData) {
+                                    if (key in this.data) {
+                                        this.data[key] = parsedData[key];
+                                    }
+                                }
+                            }
+
+                            if (this.data.horasTrabalhadas && typeof this.data.horasTrabalhadas === 'object') {
+                                if (!('prop' in this.data.horasTrabalhadas)) {
+                                    const old = this.data.horasTrabalhadas;
+                                    this.data.horasTrabalhadas = {
+                                        prop: Utils.safeNumber(old.prop ?? old.prop4001 ?? old.prop4002, 0),
+                                        terc: Utils.safeNumber(old.terc, 0)
+                                    };
+                                } else {
+                                    this.data.horasTrabalhadas.prop = Utils.safeNumber(this.data.horasTrabalhadas.prop, 0);
+                                    this.data.horasTrabalhadas.terc = Utils.safeNumber(this.data.horasTrabalhadas.terc, 0);
+                                }
+                            }
+
+                            const setValue = (id, value) => {
+                                const el = document.getElementById(id);
+                                if (el) el.value = value;
+                            };
+
+                            setValue('proprios-total', Utils.safeNumber(this.data.transportes?.propriosTotal, 0));
+                            setValue('proprios-parados', Utils.safeNumber(this.data.transportes?.propriosParados, 0));
+                            setValue('terceiros-total', Utils.safeNumber(this.data.transportes?.terceirosTotal, 0));
+                            setValue('terceiros-parados', Utils.safeNumber(this.data.transportes?.terceirosParados, 0));
+                            setValue('bv-total', Utils.safeNumber(this.data.transportes?.bvTotal, 0));
+                            setValue('bv-parados', Utils.safeNumber(this.data.transportes?.bvParados, 0));
+                            setValue('horas-prop', Utils.safeNumber(this.data.horasTrabalhadas?.prop, 0));
+                            setValue('horas-terc', Utils.safeNumber(this.data.horasTrabalhadas?.terc, 0));
+
+                            UI.updateTimestamps();
+                            UI.initFrentesTable();
+                            UI.initEquipamentosTables();
+                            UI.initPotencialTable();
+                            UI.updateRecentFrentes();
+                            UI.initChuvaTable();
+                            DataHandler.updateTransportes();
+                            UI.updateDashboard();
+                            UI.updateAllCharts();
+                            return true;
+                        } catch (error) {
+                            console.error('Error applying saved data:', error);
+                            UI.showToast('Error loading saved data. Using default data.', 'error');
+                            return false;
+                        }
                     },
 
                     saveDataKeepalive: function() {
@@ -3693,6 +3835,86 @@
                         return 0;
                     },
 
+                    refreshRemoteData: function(options = {}) {
+                        if (!supabaseClient) return Promise.resolve(null);
+
+                        const fallbackEntry = options.fallbackEntry || null;
+                        return supabaseClient
+                            .from(POTENCIAL_TABLE)
+                            .select('data,updated_at')
+                            .eq('plant_id', potencialPlantId)
+                            .maybeSingle()
+                            .then(({ data, error }) => {
+                                if (error) {
+                                    console.error('Erro ao carregar do banco:', error);
+                                    if (options.applyFallback !== false && fallbackEntry) {
+                                        this.applyLoadedData(fallbackEntry.data);
+                                    }
+                                    return null;
+                                }
+
+                                const remoteEntry = data && data.data ? {
+                                    source: 'remote',
+                                    data: data.data,
+                                    timestamp: this.getDataTimestamp(data.data, data.updated_at),
+                                    updatedAt: data.updated_at || null
+                                } : null;
+
+                                if (!remoteEntry) {
+                                    if (options.applyFallback !== false && fallbackEntry) {
+                                        this.applyLoadedData(fallbackEntry.data);
+                                    }
+                                    return null;
+                                }
+
+                                const localEntry = this.readLocalDataEntry();
+                                const localTimestamp = localEntry ? localEntry.timestamp : 0;
+                                const syncState = this.readSyncState();
+
+                                if (syncState.pendingRemoteSync) {
+                                    if (remoteEntry.timestamp >= localTimestamp) {
+                                        this.clearPendingRemoteSync(remoteEntry.updatedAt);
+                                    } else if (localEntry && localTimestamp > remoteEntry.timestamp && options.retryPending !== false) {
+                                        this.saveData();
+                                        return remoteEntry;
+                                    }
+                                }
+
+                                const latestSyncState = this.readSyncState();
+                                const currentTimestamp = this.getDataTimestamp(this.data, this._remoteUpdatedAt);
+                                const canApplyRemote = options.forceApply === true || (!this.state.isDirty && !latestSyncState.pendingRemoteSync);
+
+                                if (canApplyRemote && (options.forceApply === true || remoteEntry.timestamp > currentTimestamp)) {
+                                    this.applyLoadedData(remoteEntry.data);
+                                    this.persistLocalSnapshot({
+                                        pendingRemoteSync: false,
+                                        lastRemoteUpdatedAt: remoteEntry.updatedAt
+                                    });
+                                }
+
+                                this._remoteUpdatedAt = remoteEntry.updatedAt;
+                                return remoteEntry;
+                            })
+                            .catch((error) => {
+                                console.error('Erro ao consultar atualização remota:', error);
+                                if (options.applyFallback !== false && fallbackEntry) {
+                                    this.applyLoadedData(fallbackEntry.data);
+                                }
+                                return null;
+                            });
+                    },
+
+                    startRemoteSyncWatcher: function() {
+                        if (!supabaseClient) return;
+                        if (this.state.remotePollIntervalId) {
+                            clearInterval(this.state.remotePollIntervalId);
+                        }
+
+                        this.state.remotePollIntervalId = setInterval(() => {
+                            this.refreshRemoteData({ applyFallback: false });
+                        }, 10000);
+                    },
+
                     setupAutoBackup: function() {
                         const autoBackupToggle = document.getElementById('auto-backup-toggle');
                         if (autoBackupToggle) {
@@ -3706,7 +3928,7 @@
                             if (now - last < this.config.storage.backupInterval) return;
 
                             try {
-                                const key = `${this.config.storage.storageKey}_autoBackup`;
+                                const key = this.getAutoBackupStorageKey();
                                 const payload = { data: this.data, createdAt: new Date().toISOString() };
                                 localStorage.setItem(key, JSON.stringify(payload));
                                 this.config.storage.lastBackupTime = payload.createdAt;
@@ -4150,6 +4372,11 @@
 
                         window.addEventListener('beforeunload', flushBeforeLeave);
                         window.addEventListener('pagehide', flushBeforeLeave);
+                        document.addEventListener('visibilitychange', () => {
+                            if (!document.hidden) {
+                                this.refreshRemoteData({ applyFallback: false });
+                            }
+                        });
 
                         if (darkMq) {
                             const onDarkModeChange = (event) => {
@@ -4371,130 +4598,22 @@
                     // Load saved data from local storage
                     loadSavedData: function() {
                         UI.showLoading('Carregando dados...');
-                        
-                        const applyLoaded = (parsedData) => {
-                            try {
-                                if (parsedData && typeof parsedData === 'object') {
-                                    for (const key in parsedData) {
-                                        if (key in this.data) {
-                                            this.data[key] = parsedData[key];
-                                        }
-                                    }
-                                }
-
-                                if (this.data.horasTrabalhadas && typeof this.data.horasTrabalhadas === 'object') {
-                                    if (!('prop' in this.data.horasTrabalhadas)) {
-                                        const old = this.data.horasTrabalhadas;
-                                        this.data.horasTrabalhadas = {
-                                            prop: Utils.safeNumber(old.prop ?? old.prop4001 ?? old.prop4002, 0),
-                                            terc: Utils.safeNumber(old.terc, 0)
-                                        };
-                                    } else {
-                                        this.data.horasTrabalhadas.prop = Utils.safeNumber(this.data.horasTrabalhadas.prop, 0);
-                                        this.data.horasTrabalhadas.terc = Utils.safeNumber(this.data.horasTrabalhadas.terc, 0);
-                                    }
-                                }
-
-                                const setValue = (id, value) => {
-                                    const el = document.getElementById(id);
-                                    if (el) el.value = value;
-                                };
-
-                                setValue('proprios-total', Utils.safeNumber(this.data.transportes?.propriosTotal, 0));
-                                setValue('proprios-parados', Utils.safeNumber(this.data.transportes?.propriosParados, 0));
-                                setValue('terceiros-total', Utils.safeNumber(this.data.transportes?.terceirosTotal, 0));
-                                setValue('terceiros-parados', Utils.safeNumber(this.data.transportes?.terceirosParados, 0));
-                                setValue('bv-total', Utils.safeNumber(this.data.transportes?.bvTotal, 0));
-                                setValue('bv-parados', Utils.safeNumber(this.data.transportes?.bvParados, 0));
-                                setValue('horas-prop', Utils.safeNumber(this.data.horasTrabalhadas?.prop, 0));
-                                setValue('horas-terc', Utils.safeNumber(this.data.horasTrabalhadas?.terc, 0));
-
-                                UI.updateTimestamps();
-                                UI.initFrentesTable();
-                                UI.initEquipamentosTables();
-                                UI.initPotencialTable();
-                                UI.updateRecentFrentes();
-                                UI.initChuvaTable();
-                                DataHandler.updateTransportes();
-                            } catch (error) {
-                                console.error('Error applying saved data:', error);
-                                UI.showToast('Error loading saved data. Using default data.', 'error');
-                            }
-                        };
 
                         setTimeout(() => {
-                            const readLocal = () => {
-                                if (!this.config.storage.storageAvailable) return null;
-                                const savedData = localStorage.getItem(this.config.storage.storageKey);
-                                if (!savedData) return null;
-                                try {
-                                    const parsed = JSON.parse(savedData);
-                                    return {
-                                        source: 'local',
-                                        data: parsed,
-                                        timestamp: this.getDataTimestamp(parsed)
-                                    };
-                                } catch (error) {
-                                    console.error('Error parsing saved data:', error);
-                                    return null;
-                                }
-                            };
-
-                            const applyEntry = (entry) => {
-                                if (!entry || !entry.data) return false;
-                                applyLoaded(entry.data);
-                                return true;
-                            };
-
-                            const chooseNewestEntry = (localEntry, remoteEntry) => {
-                                if (localEntry && remoteEntry) {
-                                    return localEntry.timestamp >= remoteEntry.timestamp ? localEntry : remoteEntry;
-                                }
-                                return localEntry || remoteEntry || null;
-                            };
-
-                            const localEntry = readLocal();
+                            const localEntry = this.readLocalDataEntry();
 
                             if (!supabaseClient) {
-                                applyEntry(localEntry);
+                                if (localEntry) {
+                                    this.applyLoadedData(localEntry.data);
+                                }
                                 UI.hideLoading();
                                 return;
                             }
 
-                            supabaseClient
-                                .from(POTENCIAL_TABLE)
-                                .select('data,updated_at')
-                                .eq('plant_id', potencialPlantId)
-                                .maybeSingle()
-                                .then(({ data, error }) => {
-                                    if (error) {
-                                        console.error('Erro ao carregar do banco:', error);
-                                        applyEntry(localEntry);
-                                        return;
-                                    }
-
-                                    const remoteEntry = data && data.data ? {
-                                        source: 'remote',
-                                        data: data.data,
-                                        timestamp: this.getDataTimestamp(data.data, data.updated_at),
-                                        updatedAt: data.updated_at || null
-                                    } : null;
-
-                                    const chosenEntry = chooseNewestEntry(localEntry, remoteEntry);
-                                    applyEntry(chosenEntry);
-
-                                    if (remoteEntry) {
-                                        this._remoteUpdatedAt = remoteEntry.updatedAt;
-                                    }
-
-                                    if (chosenEntry && chosenEntry.source === 'local') {
-                                        if (!remoteEntry || chosenEntry.timestamp > remoteEntry.timestamp) {
-                                            this.saveData();
-                                        }
-                                    } else if (chosenEntry && chosenEntry.source === 'remote') {
-                                        this.persistLocalSnapshot();
-                                    }
-                                })
+                            this.refreshRemoteData({
+                                forceApply: true,
+                                fallbackEntry: localEntry
+                            })
                                 .finally(() => {
                                     UI.hideLoading();
                                 });
@@ -4543,7 +4662,9 @@
                     
                     // Save data to storage
                     saveData: function(options = {}) {
-                        this.persistLocalSnapshot();
+                        this.persistLocalSnapshot({
+                            markPending: options.skipRemote !== true && !!supabaseClient
+                        });
 
                         if (options.skipRemote === true || !supabaseClient) return true;
                         if (options.useKeepalive === true) return this.saveDataKeepalive();
@@ -4551,7 +4672,7 @@
                         const payload = {
                             plant_id: potencialPlantId,
                             data: this.data,
-                            updated_at: new Date().toISOString()
+                            updated_at: this.data.lastUpdated || new Date().toISOString()
                         };
 
                         supabaseClient
@@ -4566,6 +4687,7 @@
                                     }
                                 } else {
                                     this._remoteUpdatedAt = payload.updated_at;
+                                    this.clearPendingRemoteSync(payload.updated_at);
                                     this.state.isDirty = false;
                                 }
                             });
