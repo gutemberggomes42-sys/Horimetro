@@ -3499,6 +3499,7 @@
                         selectedTags: [],
                         helpDismissed: false,
                         mapLoaded: false,
+                        isDirty: false,
                         autoSaveTimeoutId: null,
                         scheduledReportsIntervalId: null,
                         chartDataLabelsRegistered: false,
@@ -3604,18 +3605,92 @@
                         if (this.state.autoSaveTimeoutId) clearTimeout(this.state.autoSaveTimeoutId);
                         this.state.autoSaveTimeoutId = setTimeout(() => {
                             try {
-                                DataHandler.updateFrentesDataFromUI();
-                                DataHandler.updateAllEquipamentosData();
-                                DataHandler.updateTransportesFromUI();
-                                DataHandler.updateHorasTrabalhadasFromUI();
-                                DataHandler.calculatePotencial();
-                                this.data.lastUpdated = new Date().toISOString();
-                                UI.updateTimestamps();
+                                this.syncCurrentUIState({ updateTimestamp: true });
                                 this.saveData();
                             } catch (error) {
                                 console.error('Erro no auto-salvar:', error);
                             }
                         }, 800);
+                    },
+
+                    persistLocalSnapshot: function() {
+                        try {
+                            localStorage.setItem(this.config.storage.storageKey, JSON.stringify(this.data));
+                            return true;
+                        } catch (error) {
+                            console.warn('Erro ao salvar localmente:', error);
+                            return false;
+                        }
+                    },
+
+                    syncCurrentUIState: function(options = {}) {
+                        DataHandler.updateFrentesDataFromUI();
+                        DataHandler.updateAllEquipamentosData();
+                        DataHandler.updateTransportesFromUI();
+                        DataHandler.updateHorasTrabalhadasFromUI();
+                        DataHandler.calculatePotencial();
+
+                        if (options.updateTimestamp === true) {
+                            this.data.lastUpdated = new Date().toISOString();
+                            if (options.updateUI !== false) {
+                                UI.updateTimestamps();
+                            }
+                        }
+
+                        if (options.persistLocal === true) {
+                            this.persistLocalSnapshot();
+                        }
+
+                        return true;
+                    },
+
+                    saveDataKeepalive: function() {
+                        if (!supabaseClient || typeof fetch !== 'function') return false;
+
+                        const payload = {
+                            plant_id: potencialPlantId,
+                            data: this.data,
+                            updated_at: this.data.lastUpdated || new Date().toISOString()
+                        };
+
+                        try {
+                            fetch(`${supabaseUrl}/rest/v1/${POTENCIAL_TABLE}?on_conflict=plant_id`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'apikey': supabaseKey,
+                                    'Authorization': `Bearer ${supabaseKey}`,
+                                    'Prefer': 'resolution=merge-duplicates,return=minimal'
+                                },
+                                body: JSON.stringify(payload),
+                                keepalive: true
+                            });
+                            this._remoteUpdatedAt = payload.updated_at;
+                            this.state.isDirty = false;
+                            return true;
+                        } catch (error) {
+                            console.warn('Erro ao sincronizar com keepalive:', error);
+                            return false;
+                        }
+                    },
+
+                    getDataTimestamp: function(data, fallbackTimestamp) {
+                        const candidates = [
+                            data && data.lastUpdated,
+                            data && data.updatedAt,
+                            fallbackTimestamp
+                        ];
+
+                        for (let i = 0; i < candidates.length; i++) {
+                            const value = candidates[i];
+                            if (!value) continue;
+                            const parsed = new Date(value).getTime();
+                            if (Number.isFinite(parsed)) {
+                                return parsed;
+                            }
+                        }
+
+                        return 0;
                     },
 
                     setupAutoBackup: function() {
@@ -4043,14 +4118,38 @@
                         // Setup drag and drop for backup
                         this.setupDragDropZone();
 
-                        document.addEventListener('change', (e) => {
-                            if (!e.target) return;
-                            if (e.target.closest('#settings-modal')) return;
-                            if (e.target.matches('input[type="file"]')) return;
-                            if (e.target.matches('input, select, textarea')) {
+                        const shouldAutoSaveTarget = (target) => {
+                            if (!target || typeof target.closest !== 'function') return false;
+                            if (target.closest('#settings-modal')) return false;
+                            if (typeof target.matches === 'function' && target.matches('input[type="file"]')) return false;
+                            return typeof target.matches === 'function' && target.matches('input, select, textarea');
+                        };
+
+                        const handleAutoSaveTrigger = (e) => {
+                            if (shouldAutoSaveTarget(e.target)) {
+                                this.state.isDirty = true;
                                 this.scheduleAutoSave();
                             }
-                        }, true);
+                        };
+
+                        document.addEventListener('change', handleAutoSaveTrigger, true);
+                        document.addEventListener('input', handleAutoSaveTrigger, true);
+
+                        const flushBeforeLeave = () => {
+                            if (this.state.autoSaveTimeoutId) {
+                                clearTimeout(this.state.autoSaveTimeoutId);
+                                this.state.autoSaveTimeoutId = null;
+                            }
+                            this.syncCurrentUIState({
+                                updateTimestamp: true,
+                                updateUI: false,
+                                persistLocal: true
+                            });
+                            this.saveData({ useKeepalive: true });
+                        };
+
+                        window.addEventListener('beforeunload', flushBeforeLeave);
+                        window.addEventListener('pagehide', flushBeforeLeave);
 
                         if (darkMq) {
                             const onDarkModeChange = (event) => {
@@ -4324,20 +4423,40 @@
                         };
 
                         setTimeout(() => {
-                            const tryLocal = () => {
-                                if (!this.config.storage.storageAvailable) return;
+                            const readLocal = () => {
+                                if (!this.config.storage.storageAvailable) return null;
                                 const savedData = localStorage.getItem(this.config.storage.storageKey);
-                                if (!savedData) return;
+                                if (!savedData) return null;
                                 try {
                                     const parsed = JSON.parse(savedData);
-                                    applyLoaded(parsed);
+                                    return {
+                                        source: 'local',
+                                        data: parsed,
+                                        timestamp: this.getDataTimestamp(parsed)
+                                    };
                                 } catch (error) {
                                     console.error('Error parsing saved data:', error);
+                                    return null;
                                 }
                             };
 
+                            const applyEntry = (entry) => {
+                                if (!entry || !entry.data) return false;
+                                applyLoaded(entry.data);
+                                return true;
+                            };
+
+                            const chooseNewestEntry = (localEntry, remoteEntry) => {
+                                if (localEntry && remoteEntry) {
+                                    return localEntry.timestamp >= remoteEntry.timestamp ? localEntry : remoteEntry;
+                                }
+                                return localEntry || remoteEntry || null;
+                            };
+
+                            const localEntry = readLocal();
+
                             if (!supabaseClient) {
-                                tryLocal();
+                                applyEntry(localEntry);
                                 UI.hideLoading();
                                 return;
                             }
@@ -4350,13 +4469,30 @@
                                 .then(({ data, error }) => {
                                     if (error) {
                                         console.error('Erro ao carregar do banco:', error);
-                                        tryLocal();
-                                    } else if (data && data.data) {
-                                        applyLoaded(data.data);
-                                        try {
-                                            localStorage.setItem(this.config.storage.storageKey, JSON.stringify(data.data));
-                                        } catch (e) {}
-                                        this._remoteUpdatedAt = data.updated_at || null;
+                                        applyEntry(localEntry);
+                                        return;
+                                    }
+
+                                    const remoteEntry = data && data.data ? {
+                                        source: 'remote',
+                                        data: data.data,
+                                        timestamp: this.getDataTimestamp(data.data, data.updated_at),
+                                        updatedAt: data.updated_at || null
+                                    } : null;
+
+                                    const chosenEntry = chooseNewestEntry(localEntry, remoteEntry);
+                                    applyEntry(chosenEntry);
+
+                                    if (remoteEntry) {
+                                        this._remoteUpdatedAt = remoteEntry.updatedAt;
+                                    }
+
+                                    if (chosenEntry && chosenEntry.source === 'local') {
+                                        if (!remoteEntry || chosenEntry.timestamp > remoteEntry.timestamp) {
+                                            this.saveData();
+                                        }
+                                    } else if (chosenEntry && chosenEntry.source === 'remote') {
+                                        this.persistLocalSnapshot();
                                     }
                                 })
                                 .finally(() => {
@@ -4406,12 +4542,11 @@
                     },
                     
                     // Save data to storage
-                    saveData: function() {
-                        try {
-                            localStorage.setItem(this.config.storage.storageKey, JSON.stringify(this.data));
-                        } catch (e) {}
+                    saveData: function(options = {}) {
+                        this.persistLocalSnapshot();
 
-                        if (!supabaseClient) return true;
+                        if (options.skipRemote === true || !supabaseClient) return true;
+                        if (options.useKeepalive === true) return this.saveDataKeepalive();
 
                         const payload = {
                             plant_id: potencialPlantId,
@@ -4431,6 +4566,7 @@
                                     }
                                 } else {
                                     this._remoteUpdatedAt = payload.updated_at;
+                                    this.state.isDirty = false;
                                 }
                             });
                         return true;
@@ -4475,11 +4611,27 @@
                                 const n = String(nome || '').toUpperCase();
                                 return n.includes('COLH') || n.includes('CHD');
                             };
+
+                            const calculateEquipProduction = (equipName, carregamento, auxiliar, densidadeCarga) => {
+                                const carreg = parseFloat(carregamento) || 0;
+                                const aux = parseFloat(auxiliar) || 0;
+                                if (isColhedora(equipName)) {
+                                    return carreg > 0 ? (60 / carreg) * densidadeCarga : 0;
+                                }
+                                const cicloTotal = carreg + aux;
+                                return cicloTotal > 0 ? (60 / cicloTotal) * densidadeCarga : 0;
+                            };
                             
                             // Separate harvesters
                             let colhedorasAll = equipamentos.filter(e => isColhedora(e.equipo));
                             if (colhedorasAll.length === 0) colhedorasAll = equipamentos;
                             const colhedorasDisponiveis = colhedorasAll.filter(e => e.disponivel === 1);
+                            const colhedorasAtivas = colhedorasDisponiveis.length;
+
+                            let transbordosAll = equipamentos.filter(e => !isColhedora(e.equipo));
+                            if (transbordosAll.length === 0) transbordosAll = equipamentos;
+                            const transbordosDisponiveis = transbordosAll.filter(e => e.disponivel === 1);
+                            const transbordosBase = transbordosDisponiveis.length > 0 ? transbordosDisponiveis : (transbordosAll.length > 0 ? transbordosAll : disponiveis);
                             
                             // Get number of active tractors (from UI)
                             const tratoresAtivosElement = document.getElementById(`${frenteData.frente}-tratores`);
@@ -4496,6 +4648,12 @@
                             
                             const mediaAux = avgBase.length > 0 ? 
                                 avgBase.reduce((sum, e) => sum + (parseFloat(e.aux) || 0), 0) / avgBase.length : 0;
+
+                            const mediaCarregTransbordos = transbordosBase.length > 0 ?
+                                transbordosBase.reduce((sum, e) => sum + (parseFloat(e.carreg) || 0), 0) / transbordosBase.length : 0;
+
+                            const mediaAuxTransbordos = transbordosBase.length > 0 ?
+                                transbordosBase.reduce((sum, e) => sum + (parseFloat(e.aux) || 0), 0) / transbordosBase.length : 0;
                             
                             // Update UI with averages
                             const mediaCarregElement = document.getElementById(`${frenteData.frente}-media-carreg`);
@@ -4506,12 +4664,9 @@
                             if (mediaAuxElement) mediaAuxElement.value = mediaAux.toFixed(2);
                             if (disponiveisElement) disponiveisElement.value = colhedorasDisponiveis.length;
                             
-                            // Calculate individual harvester production (t/h)
-                            colhedorasAll.forEach(equip => {
-                                const carreg = parseFloat(equip.carreg) || 0;
-                                const aux = parseFloat(equip.aux) || 0;
-                                const ciclo = Math.max(0, carreg + aux);
-                                equip.producao = ciclo > 0 ? (60 / ciclo) * densidade : 0;
+                            // Calculate individual equipment production (t/h)
+                            equipamentos.forEach(equip => {
+                                equip.producao = calculateEquipProduction(equip.equipo, equip.carreg, equip.aux, densidade);
                             });
                             
                             try {
@@ -4522,7 +4677,7 @@
                                     if (!nameEl || !prodEl) return;
                                     const eqName = String(nameEl.value || '').trim();
                                     if (!eqName) return;
-                                    const found = colhedorasAll.find(e => String(e.equipo || '').trim() === eqName);
+                                    const found = equipamentos.find(e => String(e.equipo || '').trim() === eqName);
                                     if (!found) return;
                                     const val = Number(found.producao || 0);
                                     prodEl.value = (isFinite(val) ? val : 0).toFixed(2);
@@ -4530,12 +4685,12 @@
                             } catch (e) {}
                             
                             // Calculate harvesting capacity
-                            const capColhedoras = colhedorasDisponiveis.reduce((sum, e) => sum + (parseFloat(e.producao) || 0), 0);
+                            const capColhedoras = mediaCarreg > 0 ?
+                                ((60 / mediaCarreg) * densidade * colhedorasAtivas) : 0;
                             
-                            // Calculate tractor capacity
-                            const tempoTotalCiclo = mediaCarreg + mediaAux;
-                            const capTratores = tempoTotalCiclo > 0 ? 
-                                ((60 / tempoTotalCiclo) * densidade * tratoresAtivos) : 0;
+                            // Calculate tractor/transbordo capacity
+                            const tempoTotalCiclo = mediaCarregTransbordos + mediaAuxTransbordos;
+                            const capTratores = tempoTotalCiclo > 0 ? ((60 / tempoTotalCiclo) * densidade * tratoresAtivos) : 0;
                             
                             // Limiting factor is the minimum between harvesters and tractors
                             const capColheadorasFinal = isNaN(capColhedoras) ? 0 : capColhedoras;
@@ -4747,6 +4902,8 @@
                         rows.forEach(row => {
                             const frenteId = row.querySelector('.frente-input').value;
                             const existingFrente = App.data.frentes.find(f => f.frente === frenteId);
+                            const tratoresInput = document.getElementById(`${frenteId}-tratores`);
+                            const densidadeInput = document.getElementById(`${frenteId}-densidade`);
                             
                             // Create updated front data
                             const frente = {
@@ -4759,6 +4916,8 @@
                                 usina: parseFloat(row.querySelector('td:nth-child(7) input').value) || 0,
                                 peso: parseFloat(row.querySelector('td:nth-child(12) input').value) || 60,
                                 transporte: row.querySelector('.transporte-select').value,
+                                tratoresAtivos: tratoresInput ? (parseInt(tratoresInput.value, 10) || 0) : (parseInt(existingFrente?.tratoresAtivos, 10) || 5),
+                                densidade: densidadeInput ? (parseFloat(densidadeInput.value) || 0) : (parseFloat(existingFrente?.densidade) || 12),
                                 // Keep additional fields
                                 obs: existingFrente?.obs || '',
                                 location: existingFrente?.location || null,
@@ -6210,11 +6369,11 @@
                                 <div class="equip-results">
                                     <div class="form-row">
                                         <label for="${frente.frente}-tratores">Número de Tratores Ativos:</label>
-                                        <input type="number" id="${frente.frente}-tratores" min="0" value="5">
+                                        <input type="number" id="${frente.frente}-tratores" min="0" value="${Utils.safeNumber(frente.tratoresAtivos, 5).toFixed(0)}">
                                     </div>
                                     <div class="form-row">
                                         <label for="${frente.frente}-densidade">Densidade de Carga (t):</label>
-                                        <input type="number" id="${frente.frente}-densidade" min="0" step="0.1" value="12">
+                                        <input type="number" id="${frente.frente}-densidade" min="0" step="0.1" value="${Utils.safeNumber(frente.densidade, 12).toFixed(1)}">
                                     </div>
                                     <hr style="margin: 1.5rem 0;">
                                     <div class="equip-result-row">
@@ -6251,16 +6410,21 @@
                             // Add event listeners
                             const tratoresInput = document.getElementById(`${frente.frente}-tratores`);
                             const densidadeInput = document.getElementById(`${frente.frente}-densidade`);
+                            const syncFrenteInputs = () => {
+                                DataHandler.updateFrentesDataFromUI();
+                                DataHandler.calculatePotencial();
+                                App.scheduleAutoSave();
+                            };
                             
                             if (tratoresInput) {
-                                tratoresInput.addEventListener('change', () => {
-                                    DataHandler.calculatePotencial();
+                                ['input', 'change'].forEach(eventName => {
+                                    tratoresInput.addEventListener(eventName, syncFrenteInputs);
                                 });
                             }
                             
                             if (densidadeInput) {
-                                densidadeInput.addEventListener('change', () => {
-                                    DataHandler.calculatePotencial();
+                                ['input', 'change'].forEach(eventName => {
+                                    densidadeInput.addEventListener(eventName, syncFrenteInputs);
                                 });
                             }
                             
@@ -6268,10 +6432,15 @@
                             const equipRows = frenteContainer.querySelectorAll('.equip-table tbody tr');
                             equipRows.forEach(row => {
                                 const inputs = row.querySelectorAll('input, select');
+                                const syncEquipInputs = () => {
+                                    DataHandler.updateEquipamentosDataFromUI(frente.frente);
+                                    DataHandler.calculatePotencial();
+                                    App.scheduleAutoSave();
+                                };
+
                                 inputs.forEach(input => {
-                                    input.addEventListener('change', () => {
-                                        DataHandler.updateEquipamentosDataFromUI(frente.frente);
-                                        DataHandler.calculatePotencial();
+                                    ['input', 'change'].forEach(eventName => {
+                                        input.addEventListener(eventName, syncEquipInputs);
                                     });
                                 });
                                 
@@ -6868,8 +7037,11 @@
                             // Calculate production based on inputs
                             const densidade = document.getElementById(`${frente}-densidade`) ? 
                                 parseFloat(document.getElementById(`${frente}-densidade`).value) || 12 : 12;
-                                
-                            const producao = carreg > 0 ? (60 / carreg) * densidade : 0;
+                            const nomeUpper = nome.toUpperCase();
+                            const isColhedora = nomeUpper.includes('COLH') || nomeUpper.includes('CHD');
+                            const producao = isColhedora
+                                ? (carreg > 0 ? (60 / carreg) * densidade : 0)
+                                : ((carreg + aux) > 0 ? (60 / (carreg + aux)) * densidade : 0);
                             
                             // Check if equipment already exists
                             if (!App.data.equipamentos[frente]) {
