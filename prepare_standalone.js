@@ -2,14 +2,20 @@ import fs from 'fs';
 import path from 'path';
 
 const distDir = path.resolve('dist');
-const srcHtml = path.resolve('index.html');
-const destHtml = path.resolve(distDir, 'index.html');
+const htmlFiles = ['index.html', 'potencial.html', 'cota.html', 'entrega-hora.html'];
 
 if (fs.existsSync(distDir)) {
     fs.rmSync(distDir, { recursive: true, force: true });
 }
 fs.mkdirSync(distDir);
 
-fs.copyFileSync(srcHtml, destHtml);
+htmlFiles.forEach((fileName) => {
+    const srcFile = path.resolve(fileName);
+    if (!fs.existsSync(srcFile)) {
+        throw new Error(`Arquivo obrigatório não encontrado: ${fileName}`);
+    }
+    const destFile = path.resolve(distDir, fileName);
+    fs.copyFileSync(srcFile, destFile);
+});
 
-console.log('Standalone build prepared in dist/');
+console.log(`Standalone build prepared in dist/ com ${htmlFiles.length} arquivos HTML.`);

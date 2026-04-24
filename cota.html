@@ -2264,6 +2264,8 @@
         const LOCAL_STORAGE_SERIES_KEY = `cotaFrenteSeries_${cotaPlantId}`;
         const LOCAL_STORAGE_TIPOS_KEY = `cotaFrenteTipos_${cotaPlantId}`;
         const LOCAL_STORAGE_RELATORIOS_KEY = `cotaFrenteRelatorios_${cotaPlantId}`;
+        const LOCAL_STORAGE_SYNC_KEY = `cotaFrenteSync_${cotaPlantId}`;
+        const COTA_REMOTE_SYNC_INTERVAL_MS = 10000;
         
         let FRENTES = ['f4001', 'f4002', 'f4007', 'f4009'];
         let TIPOS_FRENTES = {
@@ -2290,6 +2292,7 @@
         };
         
         let intervaloAtualizacao = null;
+        let cotaRemotePollInterval = null;
         let snapshots = [];
         let relatoriosSalvos = [];
         let configSistema = {
@@ -2325,6 +2328,10 @@
         
         // Cache para dados salvos
         let dadosSalvosCache = null;
+        let cotaLastRemoteUpdatedAt = null;
+        let cotaHasUnsavedChanges = false;
+        let cotaIsApplyingRemote = false;
+        let cotaSuppressSeriesAppend = false;
         
         // ===== Utilitários =====
         
@@ -2710,6 +2717,41 @@
         };
 
         let cotaDbSaveTimer = null;
+        const cotaReadSyncState = () => {
+            const fallback = {
+                pendingRemoteSync: false,
+                lastLocalUpdatedAt: null,
+                lastRemoteUpdatedAt: null
+            };
+            try {
+                const raw = localStorage.getItem(LOCAL_STORAGE_SYNC_KEY);
+                if (!raw) return fallback;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return fallback;
+                return {
+                    pendingRemoteSync: !!parsed.pendingRemoteSync,
+                    lastLocalUpdatedAt: parsed.lastLocalUpdatedAt || null,
+                    lastRemoteUpdatedAt: parsed.lastRemoteUpdatedAt || null
+                };
+            } catch (e) {
+                return fallback;
+            }
+        };
+        const cotaWriteSyncState = (patch = {}) => {
+            const next = {
+                ...cotaReadSyncState(),
+                ...patch
+            };
+            try {
+                localStorage.setItem(LOCAL_STORAGE_SYNC_KEY, JSON.stringify(next));
+            } catch (e) {}
+            return next;
+        };
+        const cotaToTimestamp = (value) => {
+            if (!value) return 0;
+            const parsed = new Date(value).getTime();
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
         const cotaReadLocalJson = (key, fallback) => {
             try {
                 const raw = localStorage.getItem(key);
@@ -2737,26 +2779,54 @@
                 if (backup.relatorios) localStorage.setItem(LOCAL_STORAGE_RELATORIOS_KEY, JSON.stringify(backup.relatorios));
             } catch (e) {}
         };
+        const cotaPushBackupToDb = async (options = {}) => {
+            if (!supabaseClient) return false;
+            try {
+                const payload = {
+                    plant_id: cotaPlantId,
+                    data: cotaBuildBackup(),
+                    updated_at: new Date().toISOString()
+                };
+
+                if (options.useKeepalive === true && typeof fetch === 'function') {
+                    fetch(`${supabaseUrl}/rest/v1/${COTA_TABLE}?on_conflict=plant_id`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'apikey': supabaseKey,
+                            'Authorization': `Bearer ${supabaseKey}`,
+                            'Prefer': 'resolution=merge-duplicates,return=minimal'
+                        },
+                        body: JSON.stringify(payload),
+                        keepalive: true
+                    });
+                } else {
+                    const { error } = await supabaseClient
+                        .from(COTA_TABLE)
+                        .upsert(payload, { onConflict: 'plant_id' });
+                    if (error) throw error;
+                }
+
+                cotaLastRemoteUpdatedAt = payload.updated_at;
+                cotaHasUnsavedChanges = false;
+                cotaWriteSyncState({
+                    pendingRemoteSync: false,
+                    lastRemoteUpdatedAt: payload.updated_at
+                });
+                return true;
+            } catch (error) {
+                const msg = String(error?.message || '');
+                if (String(error?.code || '') === '42P01' || msg.includes('relation') || msg.includes('does not exist')) {
+                    UI.toast('Tabela do Cota não existe no banco. Crie a tabela "cota_data" no Supabase.', 'erro', 6000);
+                }
+                return false;
+            }
+        };
         const cotaScheduleDbSave = () => {
             if (!supabaseClient) return;
             if (cotaDbSaveTimer) clearTimeout(cotaDbSaveTimer);
             cotaDbSaveTimer = setTimeout(async () => {
-                try {
-                    const payload = {
-                        plant_id: cotaPlantId,
-                        data: cotaBuildBackup(),
-                        updated_at: new Date().toISOString()
-                    };
-                    const { error } = await supabaseClient
-                        .from(COTA_TABLE)
-                        .upsert(payload, { onConflict: 'plant_id' });
-                    if (error) {
-                        const msg = String(error?.message || '');
-                        if (String(error?.code || '') === '42P01' || msg.includes('relation') || msg.includes('does not exist')) {
-                            UI.toast('Tabela do Cota não existe no banco. Crie a tabela "cota_data" no Supabase.', 'erro', 6000);
-                        }
-                    }
-                } catch (e) {}
+                await cotaPushBackupToDb();
             }, 800);
         };
         const cotaLoadFromDb = async () => {
@@ -2764,24 +2834,99 @@
             try {
                 const { data, error } = await supabaseClient
                     .from(COTA_TABLE)
-                    .select('data')
+                    .select('data,updated_at')
                     .eq('plant_id', cotaPlantId)
                     .maybeSingle();
                 if (!error && data && data.data) {
+                    const remoteUpdatedAt = data.updated_at || null;
+                    const remoteTs = cotaToTimestamp(remoteUpdatedAt);
+                    const syncState = cotaReadSyncState();
+                    const localTs = cotaToTimestamp(syncState.lastLocalUpdatedAt);
+
+                    if (syncState.pendingRemoteSync && localTs > remoteTs) {
+                        cotaScheduleDbSave();
+                        return;
+                    }
+
+                    cotaIsApplyingRemote = true;
                     cotaApplyBackup(data.data);
+                    cotaLastRemoteUpdatedAt = remoteUpdatedAt;
+                    cotaHasUnsavedChanges = false;
+                    cotaWriteSyncState({
+                        pendingRemoteSync: false,
+                        lastRemoteUpdatedAt: remoteUpdatedAt
+                    });
                 }
-            } catch (e) {}
+            } catch (e) {
+            } finally {
+                cotaIsApplyingRemote = false;
+            }
+        };
+        const cotaRefreshFromDb = async () => {
+            if (!supabaseClient) return;
+            if (cotaHasUnsavedChanges) return;
+            try {
+                const { data, error } = await supabaseClient
+                    .from(COTA_TABLE)
+                    .select('data,updated_at')
+                    .eq('plant_id', cotaPlantId)
+                    .maybeSingle();
+                if (error || !data || !data.data) return;
+
+                const remoteUpdatedAt = data.updated_at || null;
+                const remoteTs = cotaToTimestamp(remoteUpdatedAt);
+                const lastRemoteTs = cotaToTimestamp(cotaLastRemoteUpdatedAt || cotaReadSyncState().lastRemoteUpdatedAt);
+                if (remoteTs <= lastRemoteTs) return;
+
+                cotaIsApplyingRemote = true;
+                cotaSuppressSeriesAppend = true;
+                cotaApplyBackup(data.data);
+                carregarDados();
+                calcularTudo();
+                atualizarGraficos();
+                cotaLastRemoteUpdatedAt = remoteUpdatedAt;
+                cotaHasUnsavedChanges = false;
+                cotaWriteSyncState({
+                    pendingRemoteSync: false,
+                    lastRemoteUpdatedAt: remoteUpdatedAt
+                });
+            } catch (e) {
+            } finally {
+                cotaSuppressSeriesAppend = false;
+                cotaIsApplyingRemote = false;
+            }
+        };
+        const cotaStartRemoteSyncWatcher = () => {
+            if (!supabaseClient) return;
+            if (cotaRemotePollInterval) clearInterval(cotaRemotePollInterval);
+            cotaRemotePollInterval = setInterval(() => {
+                cotaRefreshFromDb();
+            }, COTA_REMOTE_SYNC_INTERVAL_MS);
         };
         const cotaStorageSalvarOriginal = Storage.salvar;
         Storage.salvar = (chave, valor) => {
             const ok = cotaStorageSalvarOriginal(chave, valor);
-            if (ok) cotaScheduleDbSave();
+            if (ok && !cotaIsApplyingRemote) {
+                cotaHasUnsavedChanges = true;
+                cotaWriteSyncState({
+                    pendingRemoteSync: true,
+                    lastLocalUpdatedAt: new Date().toISOString()
+                });
+                cotaScheduleDbSave();
+            }
             return ok;
         };
         const cotaStorageRemoverOriginal = Storage.remover;
         Storage.remover = (chave) => {
             const ok = cotaStorageRemoverOriginal(chave);
-            if (ok) cotaScheduleDbSave();
+            if (ok && !cotaIsApplyingRemote) {
+                cotaHasUnsavedChanges = true;
+                cotaWriteSyncState({
+                    pendingRemoteSync: true,
+                    lastLocalUpdatedAt: new Date().toISOString()
+                });
+                cotaScheduleDbSave();
+            }
             return ok;
         };
         
@@ -3717,7 +3862,9 @@
                 atualizarAnaliseEficiencia();
                 
                 // Salvar série temporal
-                adicionarPontoSerieTemporal(totalRealizado, totalPlanCota, eficienciaGeral);
+                if (!cotaSuppressSeriesAppend) {
+                    adicionarPontoSerieTemporal(totalRealizado, totalPlanCota, eficienciaGeral);
+                }
                 
                 // Salvar dados automaticamente
                 salvarDados();
@@ -4311,6 +4458,8 @@
                     DOM.highlight(this.parentElement);
                     if (configSistema.atualizarAutomatico) {
                         calcularTudo();
+                    } else {
+                        salvarDados();
                     }
                 });
             }
@@ -4322,6 +4471,8 @@
                     DOM.highlight(this.parentElement);
                     if (configSistema.atualizarAutomatico) {
                         calcularTudo();
+                    } else {
+                        salvarDados();
                     }
                 });
             }
@@ -4333,6 +4484,8 @@
                     DOM.highlight(this.parentElement);
                     if (configSistema.atualizarAutomatico) {
                         calcularTudo();
+                    } else {
+                        salvarDados();
                     }
                 });
             }
@@ -4344,6 +4497,8 @@
                     DOM.highlight(this.parentElement);
                     if (configSistema.atualizarAutomatico) {
                         calcularTudo();
+                    } else {
+                        salvarDados();
                     }
                 });
             }
@@ -4364,6 +4519,8 @@
                     
                     if (configSistema.atualizarAutomatico) {
                         calcularTudo();
+                    } else {
+                        salvarDados();
                     }
                 });
             }
@@ -6808,6 +6965,8 @@
                         DOM.highlight(this);
                         if (configSistema.atualizarAutomatico) {
                             calcularTudo();
+                        } else {
+                            salvarDados();
                         }
                     });
                 }
@@ -6876,6 +7035,7 @@
                             Storage.remover(LOCAL_STORAGE_SNAPSHOTS_KEY);
                             Storage.remover(LOCAL_STORAGE_SERIES_KEY);
                             Storage.remover(LOCAL_STORAGE_RELATORIOS_KEY);
+                            localStorage.removeItem(LOCAL_STORAGE_SYNC_KEY);
                             // Manter configurações e tipos
                             
                             UI.toast('Dados resetados com sucesso! Recarregando página...', 'sucesso');
@@ -7283,6 +7443,7 @@
                             Storage.remover(LOCAL_STORAGE_SNAPSHOTS_KEY);
                             Storage.remover(LOCAL_STORAGE_SERIES_KEY);
                             Storage.remover(LOCAL_STORAGE_RELATORIOS_KEY);
+                            localStorage.removeItem(LOCAL_STORAGE_SYNC_KEY);
                             
                             UI.toast('Todos os dados foram removidos! Recarregando página...', 'sucesso');
                             
@@ -7360,6 +7521,7 @@
                 setInterval(atualizarRelogio, 1000);
                 
                 configurarIntervaloAtualizacao();
+                cotaStartRemoteSyncWatcher();
                 
                 calcularTudo();
                 
@@ -7385,6 +7547,20 @@
         } else {
             inicializar();
         }
+        
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                salvarDados();
+                cotaPushBackupToDb({ useKeepalive: true });
+            } else if (document.visibilityState === 'visible') {
+                cotaRefreshFromDb();
+            }
+        });
+        
+        window.addEventListener('beforeunload', function() {
+            salvarDados();
+            cotaPushBackupToDb({ useKeepalive: true });
+        });
     </script>
 </body>
 </html>
