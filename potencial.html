@@ -3251,7 +3251,17 @@
                 const supabaseUrl = 'https://rrxkmlcxrextfxfrayfp.supabase.co';
                 const supabaseKey = 'sb_publishable_CyAbN__kFsKDcDo0eYSlBg_oSEoKrtd';
                 const supabaseClient = (window.supabase && typeof window.supabase.createClient === 'function') ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
-                const potencialPlantId = new URLSearchParams(window.location.search).get('plantId') || 'cambui';
+                const resolvePotencialPlantId = () => {
+                    const queryPlant = String(new URLSearchParams(window.location.search).get('plantId') || '').trim();
+                    if (queryPlant) return queryPlant;
+                    try {
+                        const storedPlant = String(localStorage.getItem('selectedPlantId') || '').trim();
+                        if (storedPlant) return storedPlant;
+                    } catch (error) {}
+                    return 'cambui';
+                };
+                const potencialPlantId = resolvePotencialPlantId();
+                const isPotencialCambuiPlant = String(potencialPlantId || '').trim().toLowerCase() === 'cambui';
                 const POTENCIAL_TABLE = 'potencial_data';
 
                 const Utils = {
@@ -3434,6 +3444,14 @@
                 const App = {
                     // Data storage
                     data: {
+                        plantId: potencialPlantId,
+                        modulePlantId: potencialPlantId,
+                        dataScope: {
+                            module: 'potencial',
+                            plantId: potencialPlantId,
+                            version: 2,
+                            savedAt: null
+                        },
                         frentes: [],
                         equipamentos: {},
                         potencial: [],
@@ -3667,9 +3685,10 @@
 
                     persistLocalSnapshot: function(options = {}) {
                         try {
-                            localStorage.setItem(this.getDataStorageKey(), JSON.stringify(this.data));
+                            const scopedData = this.preparePlantScopedData(this.data);
+                            localStorage.setItem(this.getDataStorageKey(), JSON.stringify(scopedData));
                             const syncPatch = {
-                                lastLocalUpdatedAt: this.data.lastUpdated || new Date().toISOString()
+                                lastLocalUpdatedAt: scopedData.lastUpdated || new Date().toISOString()
                             };
                             if (options.markPending === true) syncPatch.pendingRemoteSync = true;
                             if (options.pendingRemoteSync === false) syncPatch.pendingRemoteSync = false;
@@ -3689,9 +3708,133 @@
                         });
                     },
 
+                    buildEmptyPlantData: function() {
+                        return {
+                            plantId: potencialPlantId,
+                            modulePlantId: potencialPlantId,
+                            dataScope: {
+                                module: 'potencial',
+                                plantId: potencialPlantId,
+                                version: 2,
+                                savedAt: new Date().toISOString()
+                            },
+                            frentes: [],
+                            equipamentos: {},
+                            potencial: [],
+                            transportes: {
+                                propriosTotal: 0,
+                                propriosParados: 0,
+                                terceirosTotal: 0,
+                                terceirosParados: 0,
+                                bvTotal: 0,
+                                bvParados: 0
+                            },
+                            horasTrabalhadas: {
+                                prop: 0,
+                                terc: 0
+                            },
+                            manutencoes: [],
+                            historico: [],
+                            chuvas: [],
+                            savedReports: [],
+                            scheduledReports: [],
+                            historicalData: {
+                                colheita: [],
+                                transporte: []
+                            },
+                            lastUpdated: new Date().toISOString()
+                        };
+                    },
+
+                    resetToEmptyPlantData: function() {
+                        try {
+                            localStorage.removeItem(this.getDataStorageKey());
+                            localStorage.removeItem(this.getSyncStateKey());
+                        } catch (error) {
+                            console.warn('Falha ao limpar cache local da unidade:', error);
+                        }
+                        this.applyLoadedData(this.buildEmptyPlantData());
+                        this.writeSyncState({
+                            pendingRemoteSync: false,
+                            lastLocalUpdatedAt: null,
+                            lastRemoteUpdatedAt: null
+                        });
+                    },
+
+                    normalizePlantIdValue: function(value) {
+                        return String(value || '').trim().toLowerCase();
+                    },
+
+                    getDataPlantMarkers: function(data) {
+                        if (!data || typeof data !== 'object') return [];
+                        return [
+                            data.plantId,
+                            data.modulePlantId,
+                            data.plant_id,
+                            data.dataScope?.plantId,
+                            data.dataScope?.plant_id
+                        ]
+                            .map(value => this.normalizePlantIdValue(value))
+                            .filter(Boolean);
+                    },
+
+                    hasMeaningfulPlantData: function(data) {
+                        if (!data || typeof data !== 'object') return false;
+                        const arrayKeys = ['frentes', 'potencial', 'manutencoes', 'historico', 'chuvas', 'savedReports', 'scheduledReports'];
+                        if (arrayKeys.some(key => Array.isArray(data[key]) && data[key].length > 0)) return true;
+
+                        if (data.equipamentos && typeof data.equipamentos === 'object') {
+                            const hasEquipments = Object.values(data.equipamentos).some(value => {
+                                if (Array.isArray(value)) return value.length > 0;
+                                return value && typeof value === 'object' ? Object.keys(value).length > 0 : !!value;
+                            });
+                            if (hasEquipments) return true;
+                        }
+
+                        const hasNonZeroNumber = (obj) => obj && typeof obj === 'object'
+                            && Object.values(obj).some(value => Number(value) > 0);
+                        if (hasNonZeroNumber(data.transportes)) return true;
+                        if (hasNonZeroNumber(data.horasTrabalhadas)) return true;
+
+                        if (data.historicalData && typeof data.historicalData === 'object') {
+                            return Object.values(data.historicalData).some(value => Array.isArray(value) && value.length > 0);
+                        }
+
+                        return false;
+                    },
+
+                    shouldRejectPlantData: function(data) {
+                        if (isPotencialCambuiPlant) return false;
+                        const currentPlant = this.normalizePlantIdValue(potencialPlantId);
+                        const markers = this.getDataPlantMarkers(data);
+                        if (markers.length > 0) return !markers.includes(currentPlant);
+                        return this.hasMeaningfulPlantData(data);
+                    },
+
+                    preparePlantScopedData: function(data = this.data) {
+                        const savedAt = new Date().toISOString();
+                        const snapshot = {
+                            ...data,
+                            plantId: potencialPlantId,
+                            modulePlantId: potencialPlantId,
+                            dataScope: {
+                                ...(data?.dataScope && typeof data.dataScope === 'object' ? data.dataScope : {}),
+                                module: 'potencial',
+                                plantId: potencialPlantId,
+                                version: 2,
+                                savedAt
+                            }
+                        };
+                        this.data.plantId = potencialPlantId;
+                        this.data.modulePlantId = potencialPlantId;
+                        this.data.dataScope = snapshot.dataScope;
+                        return snapshot;
+                    },
+
                     readLocalDataEntry: function() {
                         if (!this.config.storage.storageAvailable) return null;
-                        const candidateKeys = [this.getDataStorageKey(), this.config.storage.storageKey];
+                        const candidateKeys = [this.getDataStorageKey()];
+                        if (isPotencialCambuiPlant) candidateKeys.push(this.config.storage.storageKey);
 
                         for (let i = 0; i < candidateKeys.length; i++) {
                             const key = candidateKeys[i];
@@ -3700,6 +3843,10 @@
                             if (!savedData) continue;
                             try {
                                 const parsed = JSON.parse(savedData);
+                                if (this.shouldRejectPlantData(parsed)) {
+                                    localStorage.removeItem(key);
+                                    continue;
+                                }
                                 return {
                                     source: 'local',
                                     data: parsed,
@@ -3736,6 +3883,10 @@
 
                     applyLoadedData: function(parsedData) {
                         try {
+                            if (this.shouldRejectPlantData(parsedData)) {
+                                this.resetToEmptyPlantData();
+                                return false;
+                            }
                             if (parsedData && typeof parsedData === 'object') {
                                 for (const key in parsedData) {
                                     if (key in this.data) {
@@ -3790,10 +3941,11 @@
 
                     saveDataKeepalive: function() {
                         if (!supabaseClient || typeof fetch !== 'function') return false;
+                        const scopedData = this.preparePlantScopedData(this.data);
                         const payload = {
                             plant_id: potencialPlantId,
-                            data: this.data,
-                            updated_at: this.data.lastUpdated || new Date().toISOString()
+                            data: scopedData,
+                            updated_at: scopedData.lastUpdated || new Date().toISOString()
                         };
 
                         try {
@@ -3817,11 +3969,12 @@
 
                     saveRemoteData: async function(options = {}) {
                         if (!supabaseClient || typeof fetch !== 'function') return false;
+                        const scopedData = this.preparePlantScopedData(this.data);
 
                         const payload = {
                             plant_id: potencialPlantId,
-                            data: this.data,
-                            updated_at: this.data.lastUpdated || new Date().toISOString()
+                            data: scopedData,
+                            updated_at: scopedData.lastUpdated || new Date().toISOString()
                         };
 
                         try {
@@ -3901,7 +4054,19 @@
                                     updatedAt: data.updated_at || null
                                 } : null;
 
+                                if (remoteEntry && this.shouldRejectPlantData(remoteEntry.data)) {
+                                    this.resetToEmptyPlantData();
+                                    this.saveRemoteData({ showErrorToast: false }).catch(error => {
+                                        console.warn('Falha ao limpar dados antigos da unidade no banco:', error);
+                                    });
+                                    return null;
+                                }
+
                                 if (!remoteEntry) {
+                                    if (!isPotencialCambuiPlant) {
+                                        this.resetToEmptyPlantData();
+                                        return null;
+                                    }
                                     if (options.applyFallback !== false && fallbackEntry) {
                                         this.applyLoadedData(fallbackEntry.data);
                                     }

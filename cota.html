@@ -2252,7 +2252,16 @@
 
     <script>
         // ===== Constantes e Variáveis Globais =====
-        const cotaPlantId = new URLSearchParams(window.location.search).get('plantId') || 'cambui';
+        const resolveCotaPlantId = () => {
+            const queryPlant = String(new URLSearchParams(window.location.search).get('plantId') || '').trim();
+            if (queryPlant) return queryPlant;
+            try {
+                const storedPlant = String(localStorage.getItem('selectedPlantId') || '').trim();
+                if (storedPlant) return storedPlant;
+            } catch (error) {}
+            return 'cambui';
+        };
+        const cotaPlantId = resolveCotaPlantId();
         const supabaseUrl = 'https://rrxkmlcxrextfxfrayfp.supabase.co';
         const supabaseKey = 'sb_publishable_CyAbN__kFsKDcDo0eYSlBg_oSEoKrtd';
         const supabaseClient = (window.supabase && typeof window.supabase.createClient === 'function') ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
@@ -2267,13 +2276,15 @@
         const LOCAL_STORAGE_SYNC_KEY = `cotaFrenteSync_${cotaPlantId}`;
         const COTA_REMOTE_SYNC_INTERVAL_MS = 10000;
         
-        let FRENTES = ['f4001', 'f4002', 'f4007', 'f4009'];
-        let TIPOS_FRENTES = {
+        const COTA_DEFAULT_FRENTES = cotaPlantId === 'cambui' ? ['f4001', 'f4002', 'f4007', 'f4009'] : [];
+        const COTA_DEFAULT_TIPOS_FRENTES = cotaPlantId === 'cambui' ? {
             'f4001': 'propria',
             'f4002': 'propria',
             'f4007': 'terceira',
             'f4009': 'terceira'
-        };
+        } : {};
+        let FRENTES = [...COTA_DEFAULT_FRENTES];
+        let TIPOS_FRENTES = { ...COTA_DEFAULT_TIPOS_FRENTES };
         
         // Tipos de frentes disponíveis (dinâmicos)
         let TIPOS_DISPONIVEIS = {
@@ -2779,6 +2790,21 @@
                 if (backup.relatorios) localStorage.setItem(LOCAL_STORAGE_RELATORIOS_KEY, JSON.stringify(backup.relatorios));
             } catch (e) {}
         };
+        const cotaClearLocalPlantData = () => {
+            [
+                LOCAL_STORAGE_KEY,
+                LOCAL_STORAGE_SNAPSHOTS_KEY,
+                LOCAL_STORAGE_SERIES_KEY,
+                LOCAL_STORAGE_TIPOS_KEY,
+                LOCAL_STORAGE_RELATORIOS_KEY,
+                LOCAL_STORAGE_SYNC_KEY
+            ].forEach(key => {
+                try { localStorage.removeItem(key); } catch (e) {}
+            });
+            FRENTES = [...COTA_DEFAULT_FRENTES];
+            TIPOS_FRENTES = { ...COTA_DEFAULT_TIPOS_FRENTES };
+            dadosSalvosCache = null;
+        };
         const cotaPushBackupToDb = async (options = {}) => {
             if (!supabaseClient) return false;
             try {
@@ -2837,7 +2863,12 @@
                     .select('data,updated_at')
                     .eq('plant_id', cotaPlantId)
                     .maybeSingle();
-                if (!error && data && data.data) {
+                if (error) return false;
+                if (!data || !data.data) {
+                    if (cotaPlantId !== 'cambui') cotaClearLocalPlantData();
+                    return false;
+                }
+                if (data && data.data) {
                     const remoteUpdatedAt = data.updated_at || null;
                     const remoteTs = cotaToTimestamp(remoteUpdatedAt);
                     const syncState = cotaReadSyncState();
@@ -2856,11 +2887,14 @@
                         pendingRemoteSync: false,
                         lastRemoteUpdatedAt: remoteUpdatedAt
                     });
+                    return true;
                 }
             } catch (e) {
+                return false;
             } finally {
                 cotaIsApplyingRemote = false;
             }
+            return false;
         };
         const cotaRefreshFromDb = async () => {
             if (!supabaseClient) return;

@@ -2211,11 +2211,20 @@
         class GGomesLogSystemEnhanced {
             constructor() {
                 this.version = '8.3-ENTREGA-24H-APRIMORADA';
+                this.urlParams = new URLSearchParams(window.location.search);
+                const queryPlantId = (this.urlParams.get('plantId') || '').trim();
+                let storedPlantId = '';
+                try {
+                    storedPlantId = String(localStorage.getItem('selectedPlantId') || '').trim();
+                } catch (error) {}
+                this.plantId = queryPlantId || storedPlantId || 'cambui';
+                this.allowLegacyStorageFallback = this.plantId === 'cambui';
+                const defaultFronts = this.allowLegacyStorageFallback ? ['4001', '4002', '4007', '4009'] : [];
                 this.state = {
                     currentDate: new Date().toISOString().split('T')[0],
                     currentPage: 'dashboard',
                     activePeriod: '06-08',
-                    fronts: ['4001', '4002', '4007', '4009'], // Default fronts
+                    fronts: [...defaultFronts],
                     
                     // Enhanced input mode state
                     activeInputMode: 'table', // 'table', 'cards', 'bulk'
@@ -2231,9 +2240,9 @@
                         
                         // Global goals (calculated from individual front goals)
                         dailyGoals: {
-                            delivery: 4000, // Will be sum of all front goals
+                            delivery: defaultFronts.length ? 4000 : 0, // Will be sum of all front goals
                             efficiency: 85, // %
-                            trips: 1500
+                            trips: defaultFronts.length ? 1500 : 0
                         }
                     },
                     
@@ -2316,8 +2325,6 @@
                 this.charts = {};
                 this.isChartsLibraryLoaded = false;
                 this.eventListenersAdded = false;
-                this.urlParams = new URLSearchParams(window.location.search);
-                this.plantId = (this.urlParams.get('plantId') || '').trim() || 'cambui';
                 this.storageSuffix = this.plantId ? `_${this.plantId}` : '';
                 this.remoteTable = 'entrega_hora_data';
                 this.supabaseUrl = 'https://rrxkmlcxrextfxfrayfp.supabase.co';
@@ -2638,7 +2645,7 @@
                 try {
                     const raw = localStorage.getItem(primaryKey);
                     if (raw) return JSON.parse(raw);
-                    if (fallbackKey && fallbackKey !== primaryKey) {
+                    if (this.allowLegacyStorageFallback && fallbackKey && fallbackKey !== primaryKey) {
                         const legacyRaw = localStorage.getItem(fallbackKey);
                         if (legacyRaw) return JSON.parse(legacyRaw);
                     }
@@ -2651,6 +2658,42 @@
             writeStoredJson(key, value) {
                 localStorage.setItem(key, JSON.stringify(value));
                 return value;
+            }
+
+            clearLocalPlantStorage() {
+                try {
+                    localStorage.removeItem(this.getGeneralStorageKey());
+                    localStorage.removeItem(this.getSyncStorageKey());
+                    const prefix = this.getDateStoragePrefix();
+                    const keysToRemove = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith(prefix)) keysToRemove.push(key);
+                    }
+                    keysToRemove.forEach(key => localStorage.removeItem(key));
+                } catch (error) {
+                    console.warn('Erro ao limpar cache local da unidade:', error);
+                }
+            }
+
+            resetPlantDataToEmpty() {
+                this.clearLocalPlantStorage();
+                this.state.fronts = [];
+                this.state.data.periods = {};
+                this.state.data.frontConfigs = {};
+                this.state.data.dailyGoals = {
+                    delivery: 0,
+                    efficiency: 85,
+                    trips: 0
+                };
+                this.state.reports.history = [];
+                this.state.reports.lastGenerated = {};
+                this.state.ui.unsavedChanges = false;
+                this.writeSyncState({
+                    pendingRemoteSync: false,
+                    lastLocalUpdatedAt: null,
+                    lastRemoteUpdatedAt: null
+                });
             }
 
             readSyncState() {
@@ -2774,7 +2817,7 @@
                 };
 
                 scanPrefix(this.getDateStoragePrefix());
-                if (!Object.keys(entries).length) {
+                if (this.allowLegacyStorageFallback && !Object.keys(entries).length) {
                     scanPrefix(this.getLegacyDateStoragePrefix());
                 }
 
@@ -2943,6 +2986,12 @@
 
             async loadData() {
                 try {
+                    if (this.supabaseClient && !this.allowLegacyStorageFallback) {
+                        const loadedRemote = await this.loadRemoteSnapshot({ refreshUI: false, forceApply: true });
+                        if (!loadedRemote) this.resetPlantDataToEmpty();
+                        return;
+                    }
+
                     this.loadGeneralDataFromStorage();
                     this.loadDateSpecificData();
 
