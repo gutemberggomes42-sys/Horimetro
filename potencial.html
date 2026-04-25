@@ -3656,7 +3656,9 @@
                         this.state.autoSaveTimeoutId = setTimeout(() => {
                             try {
                                 this.syncCurrentUIState({ updateTimestamp: true });
-                                this.saveData();
+                                this.saveData({ showErrorToast: false }).catch(error => {
+                                    console.error('Erro ao salvar automaticamente:', error);
+                                });
                             } catch (error) {
                                 console.error('Erro no auto-salvar:', error);
                             }
@@ -3788,7 +3790,6 @@
 
                     saveDataKeepalive: function() {
                         if (!supabaseClient || typeof fetch !== 'function') return false;
-
                         const payload = {
                             plant_id: potencialPlantId,
                             data: this.data,
@@ -3807,11 +3808,51 @@
                                 body: JSON.stringify(payload),
                                 keepalive: true
                             });
-                            this._remoteUpdatedAt = payload.updated_at;
-                            this.state.isDirty = false;
                             return true;
                         } catch (error) {
                             console.warn('Erro ao sincronizar com keepalive:', error);
+                            return false;
+                        }
+                    },
+
+                    saveRemoteData: async function(options = {}) {
+                        if (!supabaseClient || typeof fetch !== 'function') return false;
+
+                        const payload = {
+                            plant_id: potencialPlantId,
+                            data: this.data,
+                            updated_at: this.data.lastUpdated || new Date().toISOString()
+                        };
+
+                        try {
+                            const response = await fetch(`${supabaseUrl}/rest/v1/${POTENCIAL_TABLE}?on_conflict=plant_id`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'apikey': supabaseKey,
+                                    'Authorization': `Bearer ${supabaseKey}`,
+                                    'Prefer': 'resolution=merge-duplicates,return=minimal'
+                                },
+                                body: JSON.stringify(payload)
+                            });
+
+                            if (!response.ok) {
+                                const errorText = await response.text();
+                                throw new Error(errorText || `HTTP ${response.status}`);
+                            }
+
+                            this._remoteUpdatedAt = payload.updated_at;
+                            this.clearPendingRemoteSync(payload.updated_at);
+                            this.state.isDirty = false;
+                            return true;
+                        } catch (error) {
+                            console.error('Erro ao salvar no banco:', error);
+                            const msg = String(error?.message || '');
+                            if (String(error?.code || '') === '42P01' || msg.includes('relation') || msg.includes('does not exist')) {
+                                UI.showToast('Tabela do Potencial não existe no banco. Abra o SQL e crie a tabela "potencial_data".', 'error');
+                            } else if (options.showErrorToast !== false) {
+                                UI.showToast('Falha ao salvar no banco do Potencial. Verifique a conexão e as permissões.', 'error');
+                            }
                             return false;
                         }
                     },
@@ -3875,7 +3916,7 @@
                                     if (remoteEntry.timestamp >= localTimestamp) {
                                         this.clearPendingRemoteSync(remoteEntry.updatedAt);
                                     } else if (localEntry && localTimestamp > remoteEntry.timestamp && options.retryPending !== false) {
-                                        this.saveData();
+                                        this.saveData({ showErrorToast: false });
                                         return remoteEntry;
                                     }
                                 }
@@ -4147,10 +4188,12 @@
                         document.querySelectorAll('[id^="save-all-"]').forEach(button => {
                             button.addEventListener('click', () => {
                                 UI.showLoading('Salvando dados...');
-                                setTimeout(() => {
-                                    this.saveAllData();
+                                setTimeout(async () => {
+                                    const saved = await this.saveAllData();
                                     UI.hideLoading();
-                                    UI.showToast('Dados salvos com sucesso!');
+                                    if (saved) {
+                                        UI.showToast('Dados salvos com sucesso!');
+                                    }
                                 }, 500);
                             });
                         });
@@ -4621,7 +4664,7 @@
                     },
                     
                     // Save all data
-                    saveAllData: function() {
+                    saveAllData: async function() {
                         try {
                             // Update data from UI
                             DataHandler.updateFrentesDataFromUI();
@@ -4637,8 +4680,8 @@
                             UI.updateTimestamps();
                             
                             // Save to storage
-                            this.saveData();
-                            
+                            const saved = await this.saveData();
+                             
                             // Add to history
                             this.addHistoryEntry({
                                 tipo: 'system',
@@ -4651,47 +4694,24 @@
                             
                             // Update UI
                             UI.updateDashboard();
-                            
-                            return true;
+                             
+                            return saved;
                         } catch (error) {
                             console.error('Error saving data:', error);
                             UI.showToast('Error saving data: ' + error.message, 'error');
                             return false;
                         }
                     },
-                    
+                     
                     // Save data to storage
-                    saveData: function(options = {}) {
+                    saveData: async function(options = {}) {
                         this.persistLocalSnapshot({
                             markPending: options.skipRemote !== true && !!supabaseClient
                         });
 
                         if (options.skipRemote === true || !supabaseClient) return true;
                         if (options.useKeepalive === true) return this.saveDataKeepalive();
-
-                        const payload = {
-                            plant_id: potencialPlantId,
-                            data: this.data,
-                            updated_at: this.data.lastUpdated || new Date().toISOString()
-                        };
-
-                        supabaseClient
-                            .from(POTENCIAL_TABLE)
-                            .upsert(payload, { onConflict: 'plant_id' })
-                            .then(({ error }) => {
-                                if (error) {
-                                    console.error('Erro ao salvar no banco:', error);
-                                    const msg = String(error?.message || '');
-                                    if (String(error?.code || '') === '42P01' || msg.includes('relation') || msg.includes('does not exist')) {
-                                        UI.showToast('Tabela do Potencial não existe no banco. Abra o SQL e crie a tabela "potencial_data".', 'error');
-                                    }
-                                } else {
-                                    this._remoteUpdatedAt = payload.updated_at;
-                                    this.clearPendingRemoteSync(payload.updated_at);
-                                    this.state.isDirty = false;
-                                }
-                            });
-                        return true;
+                        return await this.saveRemoteData(options);
                     },
                     
                     // Add history entry
@@ -4891,12 +4911,17 @@
                     
                     // Update transports from UI
                     updateTransportesFromUI: function() {
-                        App.data.transportes.propriosTotal = parseInt(document.getElementById('proprios-total').value) || 0;
-                        App.data.transportes.propriosParados = parseInt(document.getElementById('proprios-parados').value) || 0;
-                        App.data.transportes.terceirosTotal = parseInt(document.getElementById('terceiros-total').value) || 0;
-                        App.data.transportes.terceirosParados = parseInt(document.getElementById('terceiros-parados').value) || 0;
-                        App.data.transportes.bvTotal = parseInt(document.getElementById('bv-total').value) || 0;
-                        App.data.transportes.bvParados = parseInt(document.getElementById('bv-parados').value) || 0;
+                        const getIntValue = (id) => {
+                            const element = document.getElementById(id);
+                            return element ? (parseInt(element.value, 10) || 0) : 0;
+                        };
+
+                        App.data.transportes.propriosTotal = getIntValue('proprios-total');
+                        App.data.transportes.propriosParados = getIntValue('proprios-parados');
+                        App.data.transportes.terceirosTotal = getIntValue('terceiros-total');
+                        App.data.transportes.terceirosParados = getIntValue('terceiros-parados');
+                        App.data.transportes.bvTotal = getIntValue('bv-total');
+                        App.data.transportes.bvParados = getIntValue('bv-parados');
                         
                         this.updateTransportes();
                     },
@@ -5012,32 +5037,48 @@
                     
                     // Update working hours from UI
                     updateHorasTrabalhadasFromUI: function() {
-                        App.data.horasTrabalhadas.prop = parseInt(document.getElementById('horas-prop').value) || 0;
-                        App.data.horasTrabalhadas.terc = parseInt(document.getElementById('horas-terc').value) || 0;
+                        const horasProp = document.getElementById('horas-prop');
+                        const horasTerc = document.getElementById('horas-terc');
+                        App.data.horasTrabalhadas.prop = horasProp ? (parseInt(horasProp.value, 10) || 0) : 0;
+                        App.data.horasTrabalhadas.terc = horasTerc ? (parseInt(horasTerc.value, 10) || 0) : 0;
                     },
                     
                     // Update fronts data from UI
                     updateFrentesDataFromUI: function() {
                         const rows = document.querySelectorAll('#frentes-table tbody tr');
                         const newFrentes = [];
-                        
+                         
                         rows.forEach(row => {
-                            const frenteId = row.querySelector('.frente-input').value;
+                            const frenteInput = row.querySelector('.frente-input');
+                            const cotaInput = row.querySelector('td:nth-child(2) input');
+                            const distInput = row.querySelector('td:nth-child(3) input');
+                            const idaInput = row.querySelector('td:nth-child(4) input');
+                            const campoInput = row.querySelector('td:nth-child(5) input');
+                            const voltaInput = row.querySelector('td:nth-child(6) input');
+                            const usinaInput = row.querySelector('td:nth-child(7) input');
+                            const pesoInput = row.querySelector('td:nth-child(12) input');
+                            const transporteSelect = row.querySelector('.transporte-select');
+
+                            if (!frenteInput || !cotaInput || !distInput || !idaInput || !campoInput || !voltaInput || !usinaInput || !pesoInput || !transporteSelect) {
+                                return;
+                            }
+
+                            const frenteId = frenteInput.value;
                             const existingFrente = App.data.frentes.find(f => f.frente === frenteId);
                             const tratoresInput = document.getElementById(`${frenteId}-tratores`);
                             const densidadeInput = document.getElementById(`${frenteId}-densidade`);
-                            
+                             
                             // Create updated front data
                             const frente = {
                                 frente: frenteId,
-                                cota: parseFloat(row.querySelector('td:nth-child(2) input').value) || 0,
-                                dist: parseFloat(row.querySelector('td:nth-child(3) input').value) || 0,
-                                ida: parseFloat(row.querySelector('td:nth-child(4) input').value) || 0,
-                                campo: parseFloat(row.querySelector('td:nth-child(5) input').value) || 0,
-                                volta: parseFloat(row.querySelector('td:nth-child(6) input').value) || 0,
-                                usina: parseFloat(row.querySelector('td:nth-child(7) input').value) || 0,
-                                peso: parseFloat(row.querySelector('td:nth-child(12) input').value) || 60,
-                                transporte: row.querySelector('.transporte-select').value,
+                                cota: parseFloat(cotaInput.value) || 0,
+                                dist: parseFloat(distInput.value) || 0,
+                                ida: parseFloat(idaInput.value) || 0,
+                                campo: parseFloat(campoInput.value) || 0,
+                                volta: parseFloat(voltaInput.value) || 0,
+                                usina: parseFloat(usinaInput.value) || 0,
+                                peso: parseFloat(pesoInput.value) || 60,
+                                transporte: transporteSelect.value,
                                 tratoresAtivos: tratoresInput ? (parseInt(tratoresInput.value, 10) || 0) : (parseInt(existingFrente?.tratoresAtivos, 10) || 5),
                                 densidade: densidadeInput ? (parseFloat(densidadeInput.value) || 0) : (parseFloat(existingFrente?.densidade) || 12),
                                 // Keep additional fields
@@ -5217,15 +5258,25 @@
                     updateEquipamentosDataFromUI: function(frente) {
                         const rows = document.querySelectorAll(`#equip-${frente} .equip-table tbody tr`);
                         if (!rows.length) return;
-                        
+                         
                         const equipamentos = [];
-                        
+                         
                         rows.forEach(row => {
-                            const equipo = row.querySelector('td:nth-child(1) input').value;
-                            const carreg = parseFloat(row.querySelector('td:nth-child(2) input').value) || 0;
-                            const aux = parseFloat(row.querySelector('td:nth-child(3) input').value) || 0;
-                            const disponivel = parseInt(row.querySelector('.disponivel-select').value) || 0;
-                            const producao = parseFloat(row.querySelector('td:nth-child(5) input').value) || 0;
+                            const equipoInput = row.querySelector('td:nth-child(1) input');
+                            const carregInput = row.querySelector('td:nth-child(2) input');
+                            const auxInput = row.querySelector('td:nth-child(3) input');
+                            const disponivelSelect = row.querySelector('.disponivel-select');
+                            const producaoInput = row.querySelector('td:nth-child(5) input');
+
+                            if (!equipoInput || !carregInput || !auxInput || !disponivelSelect || !producaoInput) {
+                                return;
+                            }
+
+                            const equipo = equipoInput.value;
+                            const carreg = parseFloat(carregInput.value) || 0;
+                            const aux = parseFloat(auxInput.value) || 0;
+                            const disponivel = parseInt(disponivelSelect.value, 10) || 0;
+                            const producao = parseFloat(producaoInput.value) || 0;
                             
                             equipamentos.push({
                                 equipo,
