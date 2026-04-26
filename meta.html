@@ -774,6 +774,16 @@
                                         </label>
                                         <input type="text" id="liberacao-numero" class="bg-gray-50 border border-gray-300 text-gray-900 text-base rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full p-3 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white transition-all-300" placeholder="Ex: LIB-2025-001">
                                     </div>
+
+                                    <div>
+                                        <label class="block text-gray-700 dark:text-gray-300 mb-2 text-sm font-medium" for="liberacao-area-prevista">
+                                            Área Prevista (ha)
+                                        </label>
+                                        <input type="number" step="0.01" id="liberacao-area-prevista" class="bg-gray-100 border border-gray-300 text-gray-900 text-base rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full p-3 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white transition-all-300" placeholder="0,00">
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                            Puxa automaticamente a área total cadastrada na Programação da Safra.
+                                        </p>
+                                    </div>
                                     
                                     <div>
                                         <label class="block text-gray-700 dark:text-gray-300 mb-2 text-sm font-medium" for="liberacao-status">
@@ -890,10 +900,14 @@
                             <!-- Resumo expandido -->
                             <div class="bg-white dark:bg-gray-800 rounded-lg card-shadow p-6 mb-6">
                                 <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-4">Resumo</h3>
-                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
                                     <div class="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 p-4 rounded-lg text-center">
                                         <div class="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Previsto</div>
                                         <div id="resumo-total-previsto" class="text-xl font-bold text-blue-800 dark:text-blue-300">0 T</div>
+                                    </div>
+                                    <div class="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/30 p-4 rounded-lg text-center">
+                                        <div class="text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">Área Prevista</div>
+                                        <div id="resumo-area-prevista" class="text-xl font-bold text-amber-800 dark:text-amber-300">0,0 ha</div>
                                     </div>
                                     <div class="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 p-4 rounded-lg text-center">
                                         <div class="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Total Realizado</div>
@@ -946,6 +960,9 @@
                                                 </th>
                                                 <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors" data-sort="previsto">
                                                     Previsto <i class="fas fa-sort ml-1"></i>
+                                                </th>
+                                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                                    Área Prev. (ha)
                                                 </th>
                                                 <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors" data-sort="realizado">
                                                     Realizado <i class="fas fa-sort ml-1"></i>
@@ -2857,11 +2874,12 @@ const DB = {
                 throw new Error(`Liberação com ID "${liberacao.id}" já existe.`);
             }
             
+            liberacao.area_prevista = Number(liberacao.area_prevista) || 0;
             liberacao.restante = Number(liberacao.previsto) - Number(liberacao.realizado);
             liberacao.dataRegistro = liberacao.dataRegistro || new Date().toISOString();
             
-            if (Number(liberacao.previsto) < 0 || Number(liberacao.realizado) < 0) {
-                throw new Error('Valores previstos e realizados devem ser positivos.');
+            if (Number(liberacao.previsto) < 0 || Number(liberacao.realizado) < 0 || Number(liberacao.area_prevista) < 0) {
+                throw new Error('Valores previstos, realizados e área prevista devem ser positivos.');
             }
             
             liberacoes.push(liberacao);
@@ -2886,6 +2904,10 @@ const DB = {
                 const previsto = liberacao.previsto !== undefined ? Number(liberacao.previsto) : Number(liberacoes[index].previsto);
                 const realizado = liberacao.realizado !== undefined ? Number(liberacao.realizado) : Number(liberacoes[index].realizado);
                 liberacao.restante = previsto - realizado;
+            }
+
+            if (liberacao.area_prevista !== undefined) {
+                liberacao.area_prevista = Number(liberacao.area_prevista) || 0;
             }
             
             liberacoes[index] = { ...liberacoes[index], ...liberacao };
@@ -2916,7 +2938,7 @@ const DB = {
             if (filtroStatus) liberacoes = liberacoes.filter(l => l.status === filtroStatus);
             
             const totals = {
-                previsto: 0, realizado: 0, restante: 0,
+                previsto: 0, realizado: 0, restante: 0, areaPrevista: 0,
                 statusAberto: 0, statusFechado: 0, statusEmAndamento: 0, statusCancelado: 0,
                 totalGeral: 0, count: liberacoes.length
             };
@@ -2929,6 +2951,7 @@ const DB = {
                 totals.previsto += previsto;
                 totals.realizado += realizado;
                 totals.restante += restante;
+                totals.areaPrevista += Number(l.area_prevista) || 0;
                 totals.totalGeral += previsto;
                 
                 switch(l.status) {
@@ -3734,6 +3757,8 @@ const MetaScheduleFarms = {
             option.dataset.programacaoId = row.id != null ? String(row.id) : '';
             option.dataset.dataPrevColheita = row.data_prev_colheita || '';
             option.dataset.status = row.status || '';
+            option.dataset.areaTotal = row.area_total != null ? String(row.area_total) : '';
+            option.dataset.tchEst = row.tch_est != null ? String(row.tch_est) : '';
             select.appendChild(option);
         });
 
@@ -3798,6 +3823,7 @@ const MetaScheduleFarms = {
                     const details = [
                         clean.frente ? `Frente ${clean.frente}` : '',
                         clean.cod_fazenda ? `Cód. ${clean.cod_fazenda}` : '',
+                        Number(clean.area_total) ? `Área ${Utils.formatarHectares(clean.area_total)}` : '',
                         clean.status ? `Status ${clean.status}` : '',
                         clean.data_prev_colheita ? clean.data_prev_colheita.split('-').reverse().join('/') : ''
                     ].filter(Boolean).join(' - ');
@@ -3852,15 +3878,21 @@ const MetaScheduleFarms = {
             cod_fazenda: option.dataset.codFazenda || '',
             id: option.dataset.programacaoId || '',
             data_prev_colheita: option.dataset.dataPrevColheita || '',
-            status: option.dataset.status || ''
+            status: option.dataset.status || '',
+            area_total: option.dataset.areaTotal || '',
+            tch_est: option.dataset.tchEst || ''
         };
     },
 
     applySelectedLiberacaoFarm: function() {
         const selected = this.getSelectedLiberacaoFarm();
         const frenteInput = document.getElementById('liberacao-frente');
+        const areaInput = document.getElementById('liberacao-area-prevista');
         if (selected && frenteInput && selected.frente) {
             frenteInput.value = selected.frente;
+        }
+        if (areaInput) {
+            areaInput.value = selected && Number(selected.area_total) ? Number(selected.area_total).toFixed(2) : '';
         }
     },
 
@@ -3891,6 +3923,7 @@ const MetaScheduleFarms = {
             option.dataset.fazenda = liberacao.fazenda || '';
             option.dataset.frente = liberacao.frente || '';
             option.dataset.codFazenda = liberacao.cod_fazenda || '';
+            option.dataset.areaTotal = liberacao.area_prevista != null ? String(liberacao.area_prevista) : '';
             select.appendChild(option);
             select.value = key;
         }
@@ -4026,6 +4059,14 @@ const Utils = {
             minimumFractionDigits: 1, 
             maximumFractionDigits: 1 
         }) + ' T';
+    },
+
+    formatarHectares: function(valor) {
+        const numero = Number(valor) || 0;
+        return numero.toLocaleString('pt-BR', {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1
+        }) + ' ha';
     },
     
     formatarData: function(dataStr) {
@@ -5557,7 +5598,7 @@ const App = {
         if (liberacoes.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="9" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colspan="10" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                         <i class="fas fa-search mb-2 text-2xl"></i>
                         <div>Nenhuma liberação encontrada</div>
                     </td>
@@ -5588,6 +5629,7 @@ const App = {
                         </span>
                     </td>
                     <td class="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-white">${Utils.formatarToneladas(liberacao.previsto)}</td>
+                    <td class="px-4 py-3 text-right text-sm font-medium text-amber-700 dark:text-amber-300">${Utils.formatarHectares(liberacao.area_prevista)}</td>
                     <td class="px-4 py-3 text-right text-sm font-medium text-green-600 dark:text-green-400">${Utils.formatarToneladas(liberacao.realizado)}</td>
                     <td class="px-4 py-3 text-right text-sm font-medium text-red-600 dark:text-red-400">${Utils.formatarToneladas(restante)}</td>
                     <td class="px-4 py-3 text-center">
@@ -5744,6 +5786,7 @@ const App = {
         const totals = DB.liberacoes.getTotals(filters.frente, filters.fazenda, filters.status);
         
         document.getElementById('resumo-total-previsto').textContent = Utils.formatarToneladas(totals.previsto);
+        document.getElementById('resumo-area-prevista').textContent = Utils.formatarHectares(totals.areaPrevista);
         document.getElementById('resumo-total-realizado').textContent = Utils.formatarToneladas(totals.realizado);
         document.getElementById('resumo-total-restante').textContent = Utils.formatarToneladas(totals.restante);
         document.getElementById('resumo-status-aberto').textContent = totals.statusAberto;
@@ -5776,18 +5819,24 @@ const App = {
         
         const formData = new FormData(form);
         const selectedFarm = MetaScheduleFarms.getSelectedLiberacaoFarm();
+        const areaInputValue = document.getElementById('liberacao-area-prevista').value;
+        const areaPrevista = areaInputValue !== ''
+            ? Number(areaInputValue)
+            : Number(selectedFarm?.area_total) || 0;
         const liberacao = {
             frente: document.getElementById('liberacao-frente').value.trim() || selectedFarm?.frente || '',
             fazenda: selectedFarm?.fazenda || '',
             numero: document.getElementById('liberacao-numero').value.trim(),
             status: document.getElementById('liberacao-status').value,
             previsto: parseFloat(document.getElementById('liberacao-previsto').value),
+            area_prevista: areaPrevista,
             realizado: parseFloat(document.getElementById('liberacao-realizado').value),
             data: document.getElementById('liberacao-data').value,
             observacoes: document.getElementById('liberacao-observacoes').value.trim(),
             cod_fazenda: selectedFarm?.cod_fazenda || '',
             programacao_id: selectedFarm?.id || null,
-            data_prev_colheita: selectedFarm?.data_prev_colheita || ''
+            data_prev_colheita: selectedFarm?.data_prev_colheita || '',
+            tch_est: selectedFarm?.tch_est || ''
         };
         
         try {
@@ -5824,6 +5873,7 @@ const App = {
         
         const hoje = Utils.getLocalDateString();
         document.getElementById('liberacao-data').value = hoje;
+        document.getElementById('liberacao-area-prevista').value = '';
         MetaScheduleFarms.renderLiberacaoOptions();
         
         document.getElementById('btn-submit-text').textContent = 'Salvar Liberação';
@@ -5842,6 +5892,7 @@ const App = {
         document.getElementById('liberacao-numero').value = liberacao.numero || '';
         document.getElementById('liberacao-status').value = liberacao.status;
         document.getElementById('liberacao-previsto').value = liberacao.previsto;
+        document.getElementById('liberacao-area-prevista').value = liberacao.area_prevista || '';
         document.getElementById('liberacao-realizado').value = liberacao.realizado;
         document.getElementById('liberacao-data').value = liberacao.data;
         document.getElementById('liberacao-observacoes').value = liberacao.observacoes || '';
@@ -5896,6 +5947,7 @@ const App = {
             { header: 'Número', dataKey: 'numero' },
             { header: 'Status', dataKey: (item) => Utils.getStatusConfig(item.status).texto },
             { header: 'Previsto (T)', dataKey: (item) => Utils.formatarToneladas(item.previsto) },
+            { header: 'Área Prevista (ha)', dataKey: (item) => Utils.formatarHectares(item.area_prevista) },
             { header: 'Realizado (T)', dataKey: (item) => Utils.formatarToneladas(item.realizado) },
             { header: 'Restante (T)', dataKey: (item) => Utils.formatarToneladas(Number(item.previsto) - Number(item.realizado)) },
             { header: 'Data', dataKey: (item) => Utils.formatarData(item.data) },
@@ -7801,6 +7853,7 @@ const App = {
             { header: 'Número', dataKey: 'numero' },
             { header: 'Status', dataKey: (item) => Utils.getStatusConfig(item.status).texto },
             { header: 'Previsto (T)', dataKey: (item) => Utils.formatarToneladas(item.previsto) },
+            { header: 'Área Prevista (ha)', dataKey: (item) => Utils.formatarHectares(item.area_prevista) },
             { header: 'Realizado (T)', dataKey: (item) => Utils.formatarToneladas(item.realizado) },
             { header: 'Restante (T)', dataKey: (item) => Utils.formatarToneladas(Number(item.previsto) - Number(item.realizado)) },
             { header: '% Execução', dataKey: (item) => `${((Number(item.realizado) / Number(item.previsto)) * 100).toFixed(1)}%` }

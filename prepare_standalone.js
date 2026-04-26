@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const distDir = path.resolve('dist');
-const htmlFiles = ['index.html', 'potencial.html', 'cota.html', 'entrega-hora.html'];
+const htmlFiles = ['index.html', 'potencial.html', 'cota.html', 'entrega-hora.html', 'meta.html'];
 
 if (fs.existsSync(distDir)) {
     fs.rmSync(distDir, { recursive: true, force: true });
