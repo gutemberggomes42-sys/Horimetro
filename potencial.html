@@ -3472,6 +3472,7 @@
                         chuvas: [],
                         savedReports: [],
                         scheduledReports: [],
+                        recoveryBackups: [],
                         historicalData: {
                             colheita: [],
                             transporte: []
@@ -3521,6 +3522,7 @@
                         autoSaveTimeoutId: null,
                         scheduledReportsIntervalId: null,
                         remotePollIntervalId: null,
+                        remoteLoadFinished: false,
                         chartDataLabelsRegistered: false,
                         chartDataLabelsLoading: false
                     },
@@ -3738,6 +3740,7 @@
                             chuvas: [],
                             savedReports: [],
                             scheduledReports: [],
+                            recoveryBackups: [],
                             historicalData: {
                                 colheita: [],
                                 transporte: []
@@ -3803,6 +3806,31 @@
                         return false;
                     },
 
+                    hasOperationalPlantData: function(data) {
+                        if (!data || typeof data !== 'object') return false;
+                        const arrayKeys = ['frentes', 'potencial', 'manutencoes', 'chuvas'];
+                        if (arrayKeys.some(key => Array.isArray(data[key]) && data[key].length > 0)) return true;
+
+                        if (data.equipamentos && typeof data.equipamentos === 'object') {
+                            const hasEquipments = Object.values(data.equipamentos).some(value => {
+                                if (Array.isArray(value)) return value.length > 0;
+                                return value && typeof value === 'object' ? Object.keys(value).length > 0 : !!value;
+                            });
+                            if (hasEquipments) return true;
+                        }
+
+                        const hasNonZeroNumber = (obj) => obj && typeof obj === 'object'
+                            && Object.values(obj).some(value => Number(value) > 0);
+                        if (hasNonZeroNumber(data.transportes)) return true;
+                        if (hasNonZeroNumber(data.horasTrabalhadas)) return true;
+
+                        if (data.historicalData && typeof data.historicalData === 'object') {
+                            return Object.values(data.historicalData).some(value => Array.isArray(value) && value.length > 0);
+                        }
+
+                        return false;
+                    },
+
                     shouldRejectPlantData: function(data) {
                         if (isPotencialCambuiPlant) return false;
                         const currentPlant = this.normalizePlantIdValue(potencialPlantId);
@@ -3829,6 +3857,67 @@
                         this.data.modulePlantId = potencialPlantId;
                         this.data.dataScope = snapshot.dataScope;
                         return snapshot;
+                    },
+
+                    stripRecoveryBackupsForBackup: function(data) {
+                        const snapshot = this.cloneData(data || {});
+                        delete snapshot.recoveryBackups;
+                        return snapshot;
+                    },
+
+                    fetchRemoteEntryForBackup: async function() {
+                        if (!supabaseClient) return null;
+                        try {
+                            const { data, error } = await supabaseClient
+                                .from(POTENCIAL_TABLE)
+                                .select('data,updated_at')
+                                .eq('plant_id', potencialPlantId)
+                                .maybeSingle();
+
+                            if (error || !data || !data.data) return null;
+                            return {
+                                data: data.data,
+                                updatedAt: data.updated_at || null,
+                                timestamp: this.getDataTimestamp(data.data, data.updated_at)
+                            };
+                        } catch (error) {
+                            console.warn('Falha ao buscar backup remoto anterior do Potencial:', error);
+                            return null;
+                        }
+                    },
+
+                    attachRecoveryBackup: function(scopedData, remoteEntry) {
+                        if (!remoteEntry || !remoteEntry.data) return scopedData;
+                        if (this.shouldRejectPlantData(remoteEntry.data)) return scopedData;
+                        if (!this.hasOperationalPlantData(remoteEntry.data)) return scopedData;
+
+                        const sourceUpdatedAt = remoteEntry.updatedAt || remoteEntry.data.lastUpdated || remoteEntry.data.dataScope?.savedAt || null;
+                        const existingBackups = Array.isArray(scopedData.recoveryBackups)
+                            ? scopedData.recoveryBackups
+                            : [];
+                        const alreadySaved = existingBackups.some(backup =>
+                            backup && backup.sourceUpdatedAt && sourceUpdatedAt && backup.sourceUpdatedAt === sourceUpdatedAt
+                        );
+
+                        if (alreadySaved) {
+                            scopedData.recoveryBackups = existingBackups.slice(0, 10);
+                            return scopedData;
+                        }
+
+                        scopedData.recoveryBackups = [
+                            {
+                                id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                                createdAt: new Date().toISOString(),
+                                source: 'remote-before-save',
+                                sourceUpdatedAt,
+                                plantId: potencialPlantId,
+                                data: this.stripRecoveryBackupsForBackup(remoteEntry.data)
+                            },
+                            ...existingBackups
+                        ].slice(0, 10);
+
+                        this.data.recoveryBackups = scopedData.recoveryBackups;
+                        return scopedData;
                     },
 
                     readLocalDataEntry: function() {
@@ -3942,6 +4031,11 @@
                     saveDataKeepalive: function() {
                         if (!supabaseClient || typeof fetch !== 'function') return false;
                         const scopedData = this.preparePlantScopedData(this.data);
+                        if (!this.hasOperationalPlantData(scopedData)) {
+                            console.warn('Potencial vazio não foi enviado ao banco via keepalive.');
+                            this.clearPendingRemoteSync(this._remoteUpdatedAt);
+                            return true;
+                        }
                         const payload = {
                             plant_id: potencialPlantId,
                             data: scopedData,
@@ -3969,7 +4063,21 @@
 
                     saveRemoteData: async function(options = {}) {
                         if (!supabaseClient || typeof fetch !== 'function') return false;
-                        const scopedData = this.preparePlantScopedData(this.data);
+                        let scopedData = this.preparePlantScopedData(this.data);
+
+                        if (!this.hasOperationalPlantData(scopedData) && options.allowEmptyRemoteSave !== true) {
+                            console.warn('Potencial vazio não foi enviado ao banco para evitar sobrescrever dados existentes.');
+                            this.clearPendingRemoteSync(this._remoteUpdatedAt);
+                            if (options.showEmptySkipToast === true) {
+                                UI.showToast('Potencial vazio não foi enviado ao banco para evitar apagar dados existentes.', 'warning');
+                            }
+                            return true;
+                        }
+
+                        if (options.skipRecoveryBackup !== true) {
+                            const remoteEntry = await this.fetchRemoteEntryForBackup();
+                            scopedData = this.attachRecoveryBackup(scopedData, remoteEntry);
+                        }
 
                         const payload = {
                             plant_id: potencialPlantId,
@@ -4053,6 +4161,9 @@
                                     timestamp: this.getDataTimestamp(data.data, data.updated_at),
                                     updatedAt: data.updated_at || null
                                 } : null;
+                                const localEntry = this.readLocalDataEntry();
+                                const localTimestamp = localEntry ? localEntry.timestamp : 0;
+                                const localHasOperationalData = localEntry && this.hasOperationalPlantData(localEntry.data);
 
                                 if (remoteEntry && this.shouldRejectPlantData(remoteEntry.data)) {
                                     this.resetToEmptyPlantData();
@@ -4073,8 +4184,24 @@
                                     return null;
                                 }
 
-                                const localEntry = this.readLocalDataEntry();
-                                const localTimestamp = localEntry ? localEntry.timestamp : 0;
+                                if (remoteEntry && !this.hasOperationalPlantData(remoteEntry.data) && localHasOperationalData) {
+                                    console.warn('Banco do Potencial está vazio; restaurando snapshot local com dados operacionais.');
+                                    this.applyLoadedData(localEntry.data);
+                                    this.persistLocalSnapshot({
+                                        pendingRemoteSync: true,
+                                        lastRemoteUpdatedAt: remoteEntry.updatedAt
+                                    });
+                                    this.state.remoteLoadFinished = true;
+                                    this.saveData({ showErrorToast: false, allowEmptyRemoteSave: false }).catch(error => {
+                                        console.warn('Falha ao reenviar snapshot local do Potencial:', error);
+                                    });
+                                    return {
+                                        ...localEntry,
+                                        source: 'local-restored',
+                                        remoteWasEmpty: true
+                                    };
+                                }
+
                                 const syncState = this.readSyncState();
 
                                 if (syncState.pendingRemoteSync) {
@@ -4806,6 +4933,7 @@
                     // Load saved data from local storage
                     loadSavedData: function() {
                         UI.showLoading('Carregando dados...');
+                        this.state.remoteLoadFinished = false;
 
                         setTimeout(() => {
                             const localEntry = this.readLocalDataEntry();
@@ -4814,6 +4942,7 @@
                                 if (localEntry) {
                                     this.applyLoadedData(localEntry.data);
                                 }
+                                this.state.remoteLoadFinished = true;
                                 UI.hideLoading();
                                 return;
                             }
@@ -4823,6 +4952,7 @@
                                 fallbackEntry: localEntry
                             })
                                 .finally(() => {
+                                    this.state.remoteLoadFinished = true;
                                     UI.hideLoading();
                                 });
                         }, 500);
@@ -4875,6 +5005,10 @@
                         });
 
                         if (options.skipRemote === true || !supabaseClient) return true;
+                        if (!this.state.remoteLoadFinished && options.allowBeforeRemoteLoad !== true) {
+                            console.warn('Aguardando carregamento remoto antes de salvar no banco do Potencial.');
+                            return true;
+                        }
                         if (options.useKeepalive === true) return this.saveDataKeepalive();
                         return await this.saveRemoteData(options);
                     },
@@ -9680,5 +9814,6 @@
             }
         });
     </script>
+    <script src="./audit-logger.js" data-audit-module="potencial"></script>
 </body>
 </html>
