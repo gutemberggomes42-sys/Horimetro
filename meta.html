@@ -853,6 +853,9 @@
                                         <button id="btn-export-liberacoes" class="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-all-300 hover-scale">
                                             <i class="fas fa-file-export mr-2"></i> Exportar
                                         </button>
+                                        <button id="btn-whatsapp-liberacoes" class="inline-flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-all-300 hover-scale">
+                                            <i class="fab fa-whatsapp mr-2"></i> WhatsApp
+                                        </button>
                                     </div>
                                 </div>
                                 
@@ -1209,6 +1212,8 @@
                                             <tr>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Frente</th>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Período</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Início</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Fim</th>
                                                 <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Meta (T)</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Ações</th>
@@ -1315,6 +1320,8 @@
                                             <tr>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Frente</th>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Período</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Início</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Fim</th>
                                                 <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Meta (T)</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Ações</th>
@@ -5481,7 +5488,11 @@ const App = {
         document.getElementById('btn-export-liberacoes').addEventListener('click', () => {
             this.exportarLiberacoes();
         });
-        
+
+        document.getElementById('btn-whatsapp-liberacoes').addEventListener('click', () => {
+            this.copiarRelatorioLiberacoesWhatsApp();
+        });
+
         document.getElementById('btn-exportar-acompanhamento').addEventListener('click', () => {
             this.exportarAcompanhamento();
         });
@@ -5961,7 +5972,134 @@ const App = {
             `relatorio-liberacoes-${new Date().toISOString().split('T')[0]}.pdf`
         );
     },
-    
+
+    getLiberacoesAtivas: function() {
+        return DB.liberacoes.getAll()
+            .filter(liberacao => ['aberto', 'em-andamento'].includes(liberacao.status))
+            .sort((a, b) => {
+                const statusOrder = { 'aberto': 1, 'em-andamento': 2 };
+                const byStatus = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+                if (byStatus !== 0) return byStatus;
+                const byFrente = String(a.frente || '').localeCompare(String(b.frente || ''), 'pt-BR', { numeric: true });
+                if (byFrente !== 0) return byFrente;
+                return String(a.fazenda || '').localeCompare(String(b.fazenda || ''), 'pt-BR', { numeric: true });
+            });
+    },
+
+    montarRelatorioLiberacoesWhatsApp: function() {
+        const liberacoes = this.getLiberacoesAtivas();
+        const dataHora = new Date().toLocaleString('pt-BR');
+        const unidade = (window.MetaPlantContext?.plantId || 'cambui').toUpperCase();
+        const linhas = [
+            `RELATORIO DE LIBERACOES - ${unidade}`,
+            `Gerado em: ${dataHora}`,
+            '',
+            'Somente liberacoes ABERTAS e EM ANDAMENTO'
+        ];
+
+        const grupos = [
+            { status: 'aberto', titulo: 'ABERTAS' },
+            { status: 'em-andamento', titulo: 'EM ANDAMENTO' }
+        ];
+
+        const totalGeral = { previsto: 0, realizado: 0, restante: 0, count: 0 };
+
+        grupos.forEach(grupo => {
+            const itens = liberacoes.filter(liberacao => liberacao.status === grupo.status);
+            const total = itens.reduce((acc, liberacao) => {
+                const previsto = Number(liberacao.previsto) || 0;
+                const realizado = Number(liberacao.realizado) || 0;
+                const restante = previsto - realizado;
+                acc.previsto += previsto;
+                acc.realizado += realizado;
+                acc.restante += restante;
+                acc.count += 1;
+                return acc;
+            }, { previsto: 0, realizado: 0, restante: 0, count: 0 });
+
+            totalGeral.previsto += total.previsto;
+            totalGeral.realizado += total.realizado;
+            totalGeral.restante += total.restante;
+            totalGeral.count += total.count;
+
+            linhas.push('', `${grupo.titulo} (${total.count})`);
+
+            if (itens.length === 0) {
+                linhas.push('Nenhuma liberacao neste status.');
+            } else {
+                itens.forEach((liberacao, index) => {
+                    const previsto = Number(liberacao.previsto) || 0;
+                    const realizado = Number(liberacao.realizado) || 0;
+                    const restante = previsto - realizado;
+                    const numero = liberacao.numero ? ` | Lib.: ${liberacao.numero}` : '';
+                    const data = liberacao.data ? ` | Data: ${Utils.formatarData(liberacao.data)}` : '';
+
+                    linhas.push(
+                        `${index + 1}. ${liberacao.frente || '-'} - ${liberacao.fazenda || '-'}${numero}${data}`,
+                        `Previsto: ${Utils.formatarToneladas(previsto)} | Realizado: ${Utils.formatarToneladas(realizado)} | Resta: ${Utils.formatarToneladas(restante)}`
+                    );
+                });
+            }
+
+            linhas.push(
+                `Subtotal ${grupo.titulo}: Previsto ${Utils.formatarToneladas(total.previsto)} | Realizado ${Utils.formatarToneladas(total.realizado)} | Resta ${Utils.formatarToneladas(total.restante)}`
+            );
+        });
+
+        linhas.push(
+            '',
+            `TOTAL ATIVO (${totalGeral.count})`,
+            `Previsto: ${Utils.formatarToneladas(totalGeral.previsto)}`,
+            `Realizado: ${Utils.formatarToneladas(totalGeral.realizado)}`,
+            `Resta: ${Utils.formatarToneladas(totalGeral.restante)}`
+        );
+
+        return linhas.join('\n');
+    },
+
+    copiarTextoParaAreaTransferencia: async function(texto) {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(texto);
+            return;
+        }
+
+        const textarea = document.createElement('textarea');
+        textarea.value = texto;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+
+        try {
+            document.execCommand('copy');
+        } finally {
+            document.body.removeChild(textarea);
+        }
+    },
+
+    copiarRelatorioLiberacoesWhatsApp: async function() {
+        const liberacoes = this.getLiberacoesAtivas();
+
+        if (liberacoes.length === 0) {
+            Toast.show('Nenhuma liberação aberta ou em andamento para enviar no WhatsApp', 'warning');
+            return;
+        }
+
+        const relatorio = this.montarRelatorioLiberacoesWhatsApp();
+
+        try {
+            await this.copiarTextoParaAreaTransferencia(relatorio);
+            Toast.show('Relatório de liberações copiado para o WhatsApp', 'success');
+            NotificationManager.add('Relatório de liberações ativas copiado para WhatsApp', 'success');
+        } catch (error) {
+            console.error('Erro ao copiar relatório de liberações:', error);
+            Toast.show('Não foi possível copiar o relatório. Veja o console para detalhes.', 'error');
+        }
+    },
+
     // ===== MÓDULO FRENTES =====
     
     initFormFrente: function() {
@@ -6193,7 +6331,7 @@ const App = {
         if (metas.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colspan="7" class="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
                         <i class="fas fa-home mb-2 text-2xl"></i>
                         <div>Nenhuma meta própria cadastrada</div>
                     </td>
@@ -6212,6 +6350,8 @@ const App = {
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                     <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">${frenteNome}</td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">${meta.periodo}</td>
+                    <td class="px-3 py-2 text-center text-sm text-gray-700 dark:text-gray-300">${Utils.formatarData(meta.dataInicio)}</td>
+                    <td class="px-3 py-2 text-center text-sm text-gray-700 dark:text-gray-300">${Utils.formatarData(meta.dataFim)}</td>
                     <td class="px-3 py-2 text-right text-sm font-medium text-gray-900 dark:text-white">${Utils.formatarToneladas(meta.valor)}</td>
                     <td class="px-3 py-2 text-center">
                         <span class="text-xs font-medium ${statusClass}">${statusText}</span>
@@ -6350,7 +6490,7 @@ const App = {
         if (metas.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colspan="7" class="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
                         <i class="fas fa-handshake mb-2 text-2xl"></i>
                         <div>Nenhuma meta terceira cadastrada</div>
                     </td>
@@ -6369,6 +6509,8 @@ const App = {
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                     <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">${frenteNome}</td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">${meta.periodo}</td>
+                    <td class="px-3 py-2 text-center text-sm text-gray-700 dark:text-gray-300">${Utils.formatarData(meta.dataInicio)}</td>
+                    <td class="px-3 py-2 text-center text-sm text-gray-700 dark:text-gray-300">${Utils.formatarData(meta.dataFim)}</td>
                     <td class="px-3 py-2 text-right text-sm font-medium text-gray-900 dark:text-white">${Utils.formatarToneladas(meta.valor)}</td>
                     <td class="px-3 py-2 text-center">
                         <span class="text-xs font-medium ${statusClass}">${statusText}</span>
