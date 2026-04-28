@@ -236,19 +236,52 @@
         return { size: body.length };
     };
 
+    const normalizeLegacyEquipmentSelect = (input, method) => {
+        const currentUrl = String(input?.url || input || '');
+        if (method !== 'GET' || !/\/rest\/v1\/equipments_/.test(currentUrl) || !/[?&]select=/.test(currentUrl)) {
+            return { input, url: currentUrl };
+        }
+
+        try {
+            const parsedUrl = new URL(currentUrl, window.location.origin);
+            const selectedColumns = String(parsedUrl.searchParams.get('select') || '').trim().toLowerCase();
+            if (selectedColumns !== 'frota,frente') return { input, url: currentUrl };
+
+            parsedUrl.searchParams.set('select', 'frota');
+            let normalizedUrl = parsedUrl.toString();
+            if (!/^https?:\/\//i.test(currentUrl) && normalizedUrl.startsWith(window.location.origin)) {
+                normalizedUrl = `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+            }
+
+            const normalizedInput = typeof Request !== 'undefined' && input instanceof Request
+                ? new Request(normalizedUrl, input)
+                : normalizedUrl;
+
+            return { input: normalizedInput, url: normalizedUrl };
+        } catch (error) {
+            const normalizedUrl = currentUrl.replace(/([?&]select=)frota%2Cfrente/i, '$1frota');
+            return {
+                input: normalizedUrl === currentUrl ? input : normalizedUrl,
+                url: normalizedUrl
+            };
+        }
+    };
+
     const installFetchAudit = () => {
         if (!window.fetch || window.fetch.__horimetroAuditWrapped) return;
         const originalFetch = window.fetch.bind(window);
         const wrappedFetch = async (input, init = {}) => {
             const method = String(init?.method || input?.method || 'GET').toUpperCase();
-            const url = String(input?.url || input || '');
+            const normalizedRequest = normalizeLegacyEquipmentSelect(input, method);
+            const requestInput = normalizedRequest.input;
+            const url = normalizedRequest.url;
             const table = extractRestTable(url);
             const shouldAudit = table
                 && table !== auditTable
                 && /\/rest\/v1\//.test(url)
                 && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method);
 
-            const response = await originalFetch(input, init);
+            const response = await originalFetch(requestInput, init);
 
             if (shouldAudit) {
                 log(`DB_${method}`, table, {
