@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestão Colheita e Transporte</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%233949ab'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='28' font-family='Arial' font-weight='700' fill='white'%3EP%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css">
@@ -3708,6 +3709,25 @@
                             pendingRemoteSync: false,
                             lastRemoteUpdatedAt: remoteUpdatedAt || this._remoteUpdatedAt || null
                         });
+                    },
+
+                    cloneData: function(value) {
+                        if (value === null || value === undefined) return value;
+                        try {
+                            if (typeof structuredClone === 'function') return structuredClone(value);
+                        } catch (error) {}
+                        try {
+                            return JSON.parse(JSON.stringify(value));
+                        } catch (error) {
+                            if (Array.isArray(value)) return value.map(item => this.cloneData(item));
+                            if (typeof value === 'object') {
+                                return Object.keys(value).reduce((clone, key) => {
+                                    clone[key] = this.cloneData(value[key]);
+                                    return clone;
+                                }, {});
+                            }
+                            return value;
+                        }
                     },
 
                     buildEmptyPlantData: function() {
