@@ -4118,6 +4118,27 @@
                         }
                     },
 
+                    syncEmptyPlantShellToRemote: function(reason = 'empty-plant-shell') {
+                        if (!supabaseClient) return;
+                        this.data.lastUpdated = new Date().toISOString();
+                        this.data.remoteShell = {
+                            reason,
+                            plantId: potencialPlantId,
+                            createdAt: this.data.lastUpdated
+                        };
+                        this.saveRemoteData({
+                            allowEmptyRemoteSave: true,
+                            skipRecoveryBackup: true,
+                            showErrorToast: false
+                        }).then(saved => {
+                            if (saved) {
+                                console.info(`Linha vazia segura do Potencial sincronizada para ${potencialPlantId}.`);
+                            }
+                        }).catch(error => {
+                            console.warn('Falha ao criar linha vazia segura do Potencial:', error);
+                        });
+                    },
+
                     getDataTimestamp: function(data, fallbackTimestamp) {
                         const candidates = [
                             data && data.lastUpdated,
@@ -4167,15 +4188,14 @@
 
                                 if (remoteEntry && this.shouldRejectPlantData(remoteEntry.data)) {
                                     this.resetToEmptyPlantData();
-                                    this.saveRemoteData({ showErrorToast: false }).catch(error => {
-                                        console.warn('Falha ao limpar dados antigos da unidade no banco:', error);
-                                    });
+                                    this.syncEmptyPlantShellToRemote('replace-rejected-remote-data');
                                     return null;
                                 }
 
                                 if (!remoteEntry) {
                                     if (!isPotencialCambuiPlant) {
                                         this.resetToEmptyPlantData();
+                                        this.syncEmptyPlantShellToRemote('create-missing-plant-row');
                                         return null;
                                     }
                                     if (options.applyFallback !== false && fallbackEntry) {
