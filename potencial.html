@@ -4691,6 +4691,8 @@
                             byFront,
                             totalDelivered,
                             totalTrips,
+                            totalDeliveryPerHour: totalDelivered / 3,
+                            totalTripsPerHour: totalTrips / 3,
                             hours,
                             date
                         };
@@ -4729,7 +4731,7 @@
 
                         const totalPotencial = rows.reduce((sum, item) => sum + Utils.safeNumber(item.capFrente, 0), 0);
                         lines.push(`Total de potencial de colheita ${this.formatWhatsNumber(totalPotencial, 0)} T/h`);
-                        lines.push(`Real potencial entregue ${this.formatWhatsDotNumber(entregaHoraSummary.totalDelivered || 0, 1)}`);
+                        lines.push(`Real potencial entregue ${this.formatWhatsDotNumber(entregaHoraSummary.totalDeliveryPerHour || 0, 1)} T/h`);
                         return lines.join('\n').trim();
                     },
 
