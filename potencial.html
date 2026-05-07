@@ -2174,6 +2174,12 @@
         <div id="dashboard" class="tab-content active" role="tabpanel" aria-labelledby="tab-dashboard">
             <h2>Dashboard Colheita e Transporte</h2>
             <div id="lastUpdated" class="timestamp">Última atualização: --/--/---- --:--:--</div>
+
+            <div class="controls" style="justify-content: flex-end;">
+                <button id="copy-whatsapp-scenario" class="btn btn-success" type="button">
+                    <i class="fab fa-whatsapp" aria-hidden="true"></i> Copiar Cenário WhatsApp
+                </button>
+            </div>
             
             <div class="storage-status">
                 <div class="storage-status-label">
@@ -4372,6 +4378,141 @@
                             }
                         }, 30000);
                     },
+
+                    formatWhatsNumber: function(value, decimals = 0, trimZero = false) {
+                        const numericValue = Utils.safeNumber(value, 0);
+                        let formatted = numericValue.toLocaleString('pt-BR', {
+                            minimumFractionDigits: decimals,
+                            maximumFractionDigits: decimals
+                        });
+                        if (trimZero) formatted = formatted.replace(/,0$/, '');
+                        return formatted;
+                    },
+
+                    formatWhatsFrente: function(frente) {
+                        const raw = String(frente || '').trim().toUpperCase();
+                        return raw.replace(/^F/, '') || '-';
+                    },
+
+                    buildWhatsAppScenarioText: function() {
+                        try {
+                            DataHandler.calculatePotencial();
+                            UI.updateDashboard();
+                        } catch (error) {}
+
+                        const rows = (this.data.potencial || [])
+                            .filter(item => item && Utils.safeNumber(item.capFrente, 0) > 0)
+                            .sort((a, b) => this.formatWhatsFrente(a.frente).localeCompare(this.formatWhatsFrente(b.frente), 'pt-BR', { numeric: true }));
+
+                        if (rows.length === 0) return '';
+
+                        const lines = ['*Cenário no momento*', ''];
+                        rows.forEach(item => {
+                            const frente = this.formatWhatsFrente(item.frente);
+                            const potencial = this.formatWhatsNumber(item.capFrente, 0);
+                            const caminhoesHora = this.formatWhatsNumber(item.camh, 1, true);
+                            const tempoAloc = this.formatWhatsNumber(item.intaloc, 0);
+                            const minutoLabel = Utils.safeNumber(item.intaloc, 0) === 1 ? 'minuto' : 'Min';
+
+                            lines.push(`*Frente ${frente} ${potencial} T/h, ${caminhoesHora} C/h, Tempo de alocação ${tempoAloc} ${minutoLabel}*`);
+                            lines.push('');
+                        });
+
+                        const totalPotencial = rows.reduce((sum, item) => sum + Utils.safeNumber(item.capFrente, 0), 0);
+                        lines.push(`Total de potencial de colheita ${this.formatWhatsNumber(totalPotencial, 0)} T/h`);
+                        return lines.join('\n').trim();
+                    },
+
+                    showWhatsAppScenarioFallback: function(reportText) {
+                        const modal = document.createElement('div');
+                        modal.className = 'modal';
+                        modal.style.display = 'flex';
+                        modal.innerHTML = `
+                            <div class="modal-content" style="max-width: 720px;">
+                                <div class="modal-header">
+                                    <h3>Cenário para WhatsApp</h3>
+                                    <button class="modal-close" type="button">&times;</button>
+                                </div>
+                                <div class="modal-body">
+                                    <p style="margin-top: 0;">Copie o texto abaixo e cole no WhatsApp.</p>
+                                    <textarea id="whatsapp-scenario-text" readonly style="width: 100%; min-height: 260px; resize: vertical; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-family: inherit; line-height: 1.5;">${Utils.escapeHtml(reportText)}</textarea>
+                                </div>
+                                <div class="modal-footer">
+                                    <button class="btn btn-secondary modal-close-btn" type="button">Fechar</button>
+                                    <button class="btn btn-success select-whatsapp-text" type="button">
+                                        <i class="fab fa-whatsapp" aria-hidden="true"></i> Selecionar Texto
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+
+                        const closeModal = () => {
+                            if (modal.parentNode) document.body.removeChild(modal);
+                        };
+
+                        document.body.appendChild(modal);
+                        const textarea = modal.querySelector('#whatsapp-scenario-text');
+                        const selectText = () => {
+                            textarea.focus();
+                            textarea.select();
+                        };
+
+                        modal.querySelector('.modal-close').addEventListener('click', closeModal);
+                        modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+                        modal.querySelector('.select-whatsapp-text').addEventListener('click', () => {
+                            selectText();
+                            UI.showToast('Texto selecionado. Agora use Ctrl+C e cole no WhatsApp.');
+                        });
+                        modal.addEventListener('click', (event) => {
+                            if (event.target === modal) closeModal();
+                        });
+                        setTimeout(selectText, 50);
+                    },
+
+                    copyWhatsAppScenario: async function() {
+                        const reportText = this.buildWhatsAppScenarioText();
+                        if (!reportText) {
+                            UI.showToast('Calcule o potencial antes de copiar o cenário.', 'warning');
+                            return;
+                        }
+
+                        try {
+                            let copied = false;
+                            let textarea = null;
+                            try {
+                                textarea = document.createElement('textarea');
+                                textarea.value = reportText;
+                                textarea.setAttribute('readonly', '');
+                                textarea.style.position = 'fixed';
+                                textarea.style.left = '-9999px';
+                                textarea.style.opacity = '0';
+                                document.body.appendChild(textarea);
+                                textarea.focus();
+                                textarea.select();
+                                copied = document.execCommand('copy');
+                            } catch (copyCommandError) {
+                                console.warn('Fallback copy command failed:', copyCommandError);
+                            } finally {
+                                if (textarea && textarea.parentNode) document.body.removeChild(textarea);
+                            }
+
+                            if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+                                try {
+                                    await navigator.clipboard.writeText(reportText);
+                                    copied = true;
+                                } catch (clipboardError) {
+                                    console.warn('Clipboard API copy failed:', clipboardError);
+                                }
+                            }
+
+                            if (!copied) throw new Error('Clipboard copy failed');
+                            UI.showToast('Cenário copiado para enviar no WhatsApp!');
+                        } catch (error) {
+                            console.error('Erro ao copiar cenário para WhatsApp:', error);
+                            this.showWhatsAppScenarioFallback(reportText);
+                            UI.showToast('Não consegui copiar automático, mas deixei o texto pronto para copiar.', 'warning');
+                        }
+                    },
                     
                     // Setup event listeners
                     setupEventListeners: function() {
@@ -4424,6 +4565,13 @@
                         document.getElementById('help-toggle').addEventListener('click', () => {
                             document.getElementById('help-panel').classList.add('active');
                         });
+
+                        const whatsappScenarioButton = document.getElementById('copy-whatsapp-scenario');
+                        if (whatsappScenarioButton) {
+                            whatsappScenarioButton.addEventListener('click', () => {
+                                this.copyWhatsAppScenario();
+                            });
+                        }
                         
                         // Close help panel
                         document.getElementById('help-close').addEventListener('click', () => {

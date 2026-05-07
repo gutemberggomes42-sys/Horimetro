@@ -2264,7 +2264,13 @@
         const cotaPlantId = resolveCotaPlantId();
         const supabaseUrl = 'https://rrxkmlcxrextfxfrayfp.supabase.co';
         const supabaseKey = 'sb_publishable_CyAbN__kFsKDcDo0eYSlBg_oSEoKrtd';
-        const supabaseClient = (window.supabase && typeof window.supabase.createClient === 'function') ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
+        const supabaseClient = (window.supabase && typeof window.supabase.createClient === 'function') ? window.supabase.createClient(supabaseUrl, supabaseKey, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            }
+        }) : null;
         const COTA_TABLE = 'cota_data';
         
         const LOCAL_STORAGE_KEY = `cotaFrenteData_${cotaPlantId}`;
@@ -2779,6 +2785,13 @@
             tipos: cotaReadLocalJson(LOCAL_STORAGE_TIPOS_KEY, TIPOS_DISPONIVEIS),
             relatorios: cotaReadLocalJson(LOCAL_STORAGE_RELATORIOS_KEY, [])
         });
+        const cotaBackupHasOperationalData = (backup) => {
+            const frentes = backup?.dados?.frentes;
+            if (frentes && typeof frentes === 'object' && Object.keys(frentes).length > 0) return true;
+            if (Array.isArray(backup?.snapshots) && backup.snapshots.length > 0) return true;
+            if (Array.isArray(backup?.relatorios) && backup.relatorios.length > 0) return true;
+            return false;
+        };
         const cotaApplyBackup = (backup) => {
             if (!backup || typeof backup !== 'object') return;
             try {
@@ -2808,9 +2821,16 @@
         const cotaPushBackupToDb = async (options = {}) => {
             if (!supabaseClient) return false;
             try {
+                const backup = cotaBuildBackup();
+                if (!cotaBackupHasOperationalData(backup)) {
+                    console.warn('Cota vazia não foi enviada ao banco para evitar sobrescrever dados existentes.');
+                    cotaHasUnsavedChanges = false;
+                    cotaWriteSyncState({ pendingRemoteSync: false });
+                    return true;
+                }
                 const payload = {
                     plant_id: cotaPlantId,
-                    data: cotaBuildBackup(),
+                    data: backup,
                     updated_at: new Date().toISOString()
                 };
 
@@ -2874,7 +2894,7 @@
                     const syncState = cotaReadSyncState();
                     const localTs = cotaToTimestamp(syncState.lastLocalUpdatedAt);
 
-                    if (syncState.pendingRemoteSync && localTs > remoteTs) {
+                    if (syncState.pendingRemoteSync && localTs > remoteTs && cotaBackupHasOperationalData(cotaBuildBackup())) {
                         cotaScheduleDbSave();
                         return;
                     }
@@ -2890,6 +2910,7 @@
                     return true;
                 }
             } catch (e) {
+                console.warn('Erro ao carregar Cota do banco:', e);
                 return false;
             } finally {
                 cotaIsApplyingRemote = false;
@@ -7543,8 +7564,6 @@
             try {
                 definirDataHoraAtual();
                 
-                await cotaLoadFromDb();
-                
                 carregarDados();
                 
                 configurarEventListeners();
@@ -7558,6 +7577,18 @@
                 cotaStartRemoteSyncWatcher();
                 
                 calcularTudo();
+
+                cotaLoadFromDb().then(remoteLoaded => {
+                    if (!remoteLoaded) return;
+                    cotaSuppressSeriesAppend = true;
+                    try {
+                        carregarDados();
+                        calcularTudo();
+                        atualizarGraficos();
+                    } finally {
+                        cotaSuppressSeriesAppend = false;
+                    }
+                });
                 
                 setTimeout(() => {
                     atualizarGraficos();
