@@ -2732,6 +2732,10 @@
                 if (options.refresh !== false) {
                     this.updateRolling3hPanel();
                 }
+
+                if (options.persist === true || options.manual === true) {
+                    this.saveData({ showToast: false });
+                }
             }
 
             getRolling3hReferenceTime() {
@@ -2982,6 +2986,11 @@
                     this.state.reports = { ...this.state.reports, ...data.reports };
                 }
 
+                if (data.ui?.rolling3hReferenceTime) {
+                    this.state.ui.rolling3hReferenceTime = this.normalizeHourInput(data.ui.rolling3hReferenceTime);
+                    this.state.ui.rolling3hManual = !!data.ui.rolling3hManual;
+                }
+
                 return true;
             }
 
@@ -2990,12 +2999,17 @@
                 return {
                     version: this.version,
                     timestamp,
+                    currentDate: this.state.currentDate,
                     fronts: this.cloneData(this.state.fronts),
                     data: {
                         frontConfigs: this.cloneData(this.state.data.frontConfigs),
                         dailyGoals: this.cloneData(this.state.data.dailyGoals)
                     },
                     config: this.cloneData(this.state.config),
+                    ui: {
+                        rolling3hReferenceTime: this.state.ui.rolling3hReferenceTime || '',
+                        rolling3hManual: !!this.state.ui.rolling3hManual
+                    },
                     reports: this.cloneData(this.state.reports)
                 };
             }
@@ -3052,9 +3066,14 @@
                 return {
                     version: this.version,
                     timestamp,
+                    currentDate: this.state.currentDate,
                     fronts: this.cloneData(this.state.fronts),
                     frontConfigs: this.cloneData(this.state.data.frontConfigs),
                     dailyGoals: this.cloneData(this.state.data.dailyGoals),
+                    ui: {
+                        rolling3hReferenceTime: this.state.ui.rolling3hReferenceTime || '',
+                        rolling3hManual: !!this.state.ui.rolling3hManual
+                    },
                     reports: this.cloneData(this.state.reports),
                     dateEntries
                 };
@@ -3067,12 +3086,14 @@
                 const mergedGeneral = {
                     version: snapshot.version || localGeneral.version || this.version,
                     timestamp: snapshot.timestamp || new Date().toISOString(),
+                    currentDate: snapshot.currentDate || localGeneral.currentDate || this.state.currentDate,
                     fronts: Array.isArray(snapshot.fronts) ? snapshot.fronts : (localGeneral.fronts || this.state.fronts),
                     data: {
                         frontConfigs: this.cloneData(snapshot.frontConfigs || localGeneral.data?.frontConfigs || this.state.data.frontConfigs),
                         dailyGoals: this.cloneData(snapshot.dailyGoals || localGeneral.data?.dailyGoals || this.state.data.dailyGoals)
                     },
                     config: this.cloneData(localGeneral.config || this.state.config),
+                    ui: this.cloneData(snapshot.ui || localGeneral.ui || {}),
                     reports: this.cloneData(snapshot.reports || localGeneral.reports || this.state.reports)
                 };
 
@@ -3412,7 +3433,7 @@
                     this.addEventListenerSafe('bulk-input-mode', 'click', () => this.switchInputMode('bulk'));
                     this.addEventListenerSafe('rolling3h-reference-time', 'input', (e) => this.setRolling3hReferenceTime(e.target.value, { manual: true }));
                     this.addEventListenerSafe('rolling3h-reference-time', 'change', (e) => this.setRolling3hReferenceTime(e.target.value, { manual: true }));
-                    this.addEventListenerSafe('rolling3h-now', 'click', () => this.setRolling3hReferenceTime(this.getCurrentHourLabel(), { manual: false }));
+                    this.addEventListenerSafe('rolling3h-now', 'click', () => this.setRolling3hReferenceTime(this.getCurrentHourLabel(), { manual: false, persist: true }));
                     this.addEventListenerSafe('validate-all-inputs', 'click', () => this.validateAllInputs());
                     this.addEventListenerSafe('clear-period-inputs', 'click', () => this.clearPeriodInputs());
                     this.addEventListenerSafe('apply-bulk-hour1', 'click', () => this.applyBulkInput('hour1'));

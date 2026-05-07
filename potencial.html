@@ -2300,6 +2300,7 @@
                             <tr>
                                 <th>Frente</th>
                                 <th>Cota (t)</th>
+                                <th>Cota T/H</th>
                                 <th>Produção Atual (t/h)</th>
                                 <th>Capacidade (%)</th>
                                 <th>Status</th>
@@ -3303,6 +3304,37 @@
                         }
                         const n = Number(value);
                         return Number.isFinite(n) ? n : fallback;
+                    },
+
+                    getFrenteWorkHours: function(frenteData, appData) {
+                        const horas = String(frenteData?.transporte || '').toUpperCase() === 'P'
+                            ? appData?.horasTrabalhadas?.prop
+                            : appData?.horasTrabalhadas?.terc;
+                        return Math.max(1, this.safeNumber(horas, 1));
+                    },
+
+                    getFrenteCotaHora: function(frenteData, appData) {
+                        if (!frenteData) return 0;
+                        return this.safeNumber(frenteData.cota, 0) / this.getFrenteWorkHours(frenteData, appData);
+                    },
+
+                    getPotencialStatusInfo: function(capFrente, cotaHora) {
+                        const cap = this.safeNumber(capFrente, 0);
+                        const metaHora = this.safeNumber(cotaHora, 0);
+                        const percentual = metaHora > 0 ? (cap / metaHora) * 100 : 0;
+                        const status = percentual >= 100 ? 'ÓTIMO' :
+                            percentual >= 90 ? 'BOM' :
+                            percentual >= 75 ? 'REGULAR' : 'INSUFICIENTE';
+                        const classBase = percentual >= 100 ? 'success' :
+                            percentual >= 90 ? 'info' :
+                            percentual >= 75 ? 'warning' : 'danger';
+
+                        return {
+                            percentual,
+                            status,
+                            classBase,
+                            badgeClass: `badge-${classBase}`
+                        };
                     },
 
                     downloadBlob: function(blob, filename) {
@@ -4394,7 +4426,277 @@
                         return raw.replace(/^F/, '') || '-';
                     },
 
-                    buildWhatsAppScenarioText: function() {
+                    normalizeEntregaHoraFront: function(frente) {
+                        const raw = String(frente || '').trim().toUpperCase();
+                        const withoutPrefix = raw.replace(/^F/, '');
+                        const digits = withoutPrefix.replace(/\D/g, '');
+                        return digits || withoutPrefix || raw;
+                    },
+
+                    formatWhatsDotNumber: function(value, decimals = 1) {
+                        const numericValue = Utils.safeNumber(value, 0);
+                        return numericValue.toFixed(decimals);
+                    },
+
+                    getEntregaHoraTimeSlots: function() {
+                        return [
+                            { period: '06-08', hours: ['06:00', '07:00'] },
+                            { period: '08-10', hours: ['08:00', '09:00'] },
+                            { period: '10-12', hours: ['10:00', '11:00'] },
+                            { period: '12-14', hours: ['12:00', '13:00'] },
+                            { period: '14-16', hours: ['14:00', '15:00'] },
+                            { period: '16-18', hours: ['16:00', '17:00'] },
+                            { period: '18-20', hours: ['18:00', '19:00'] },
+                            { period: '20-22', hours: ['20:00', '21:00'] },
+                            { period: '22-00', hours: ['22:00', '23:00'] },
+                            { period: '00-02', hours: ['00:00', '01:00'] },
+                            { period: '02-04', hours: ['02:00', '03:00'] },
+                            { period: '04-06', hours: ['04:00', '05:00'] }
+                        ];
+                    },
+
+                    formatEntregaHoraFromNumber: function(hour) {
+                        const normalized = ((Number(hour) % 24) + 24) % 24;
+                        return `${String(normalized).padStart(2, '0')}:00`;
+                    },
+
+                    normalizeEntregaHoraTime: function(value) {
+                        const raw = String(value || '').trim();
+                        const match = raw.match(/^(\d{1,2})(?::\d{1,2})?$/);
+                        if (!match) return this.formatEntregaHoraFromNumber(new Date().getHours());
+                        return this.formatEntregaHoraFromNumber(parseInt(match[1], 10));
+                    },
+
+                    getEntregaHoraWindow: function(referenceTime) {
+                        const referenceHour = parseInt(this.normalizeEntregaHoraTime(referenceTime).slice(0, 2), 10);
+                        const startHour = referenceHour - 2;
+                        return [startHour, startHour + 1, referenceHour].map(hour => this.formatEntregaHoraFromNumber(hour));
+                    },
+
+                    getEntregaHoraPeriodHourRef: function(hourLabel) {
+                        for (const slot of this.getEntregaHoraTimeSlots()) {
+                            const index = slot.hours.indexOf(hourLabel);
+                            if (index !== -1) {
+                                return {
+                                    period: slot.period,
+                                    hourKey: index === 0 ? 'hour1' : 'hour2'
+                                };
+                            }
+                        }
+                        return null;
+                    },
+
+                    getLocalIsoDate: function() {
+                        const now = new Date();
+                        const year = now.getFullYear();
+                        const month = String(now.getMonth() + 1).padStart(2, '0');
+                        const day = String(now.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    },
+
+                    readEntregaHoraLocalSnapshot: function() {
+                        try {
+                            const suffix = potencialPlantId ? `_${potencialPlantId}` : '';
+                            const configKey = `ggomes-log-data-v83-config${suffix}`;
+                            const legacyConfigKey = 'ggomes-log-data-v83-config';
+                            const configRaw = localStorage.getItem(configKey) || (isPotencialCambuiPlant ? localStorage.getItem(legacyConfigKey) : null);
+                            const configData = configRaw ? JSON.parse(configRaw) : {};
+                            const datePrefix = `ggomes-log-data-v83-date${suffix}-`;
+                            const legacyDatePrefix = 'ggomes-log-data-v83-';
+                            const dateEntries = {};
+
+                            const scanPrefix = (prefix) => {
+                                for (let i = 0; i < localStorage.length; i++) {
+                                    const key = localStorage.key(i);
+                                    if (!key || !key.startsWith(prefix)) continue;
+                                    const date = key.slice(prefix.length);
+                                    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+                                    try {
+                                        dateEntries[date] = JSON.parse(localStorage.getItem(key));
+                                    } catch (error) {}
+                                }
+                            };
+
+                            scanPrefix(datePrefix);
+                            if (isPotencialCambuiPlant && Object.keys(dateEntries).length === 0) {
+                                scanPrefix(legacyDatePrefix);
+                            }
+
+                            return {
+                                version: configData.version || 'local-entrega-hora',
+                                timestamp: configData.timestamp || null,
+                                currentDate: configData.currentDate || this.getLocalIsoDate(),
+                                fronts: Array.isArray(configData.fronts) ? configData.fronts : [],
+                                frontConfigs: configData.data?.frontConfigs || configData.frontConfigs || {},
+                                dailyGoals: configData.data?.dailyGoals || configData.dailyGoals || {},
+                                ui: configData.ui || {},
+                                dateEntries
+                            };
+                        } catch (error) {
+                            console.warn('Nao foi possivel ler cache local do Entrega Hora:', error);
+                            return null;
+                        }
+                    },
+
+                    fetchEntregaHoraSnapshot: async function() {
+                        const localSnapshot = this.readEntregaHoraLocalSnapshot();
+
+                        if (supabaseClient) {
+                            try {
+                                const { data, error } = await supabaseClient
+                                    .from('entrega_hora_data')
+                                    .select('data,updated_at')
+                                    .eq('plant_id', potencialPlantId)
+                                    .maybeSingle();
+
+                                if (!error && data?.data) {
+                                    const remoteSnapshot = {
+                                        ...data.data,
+                                        updatedAt: data.updated_at || data.data.timestamp || null
+                                    };
+
+                                    if (localSnapshot) {
+                                        remoteSnapshot.ui = {
+                                            ...(remoteSnapshot.ui || {}),
+                                            ...(localSnapshot.ui || {})
+                                        };
+                                        remoteSnapshot.currentDate = localSnapshot.currentDate || remoteSnapshot.currentDate;
+                                        remoteSnapshot.dateEntries = {
+                                            ...(remoteSnapshot.dateEntries || {}),
+                                            ...(localSnapshot.dateEntries || {})
+                                        };
+                                    }
+
+                                    return {
+                                        ...remoteSnapshot
+                                    };
+                                }
+                            } catch (error) {
+                                console.warn('Nao foi possivel carregar Entrega Hora do banco:', error);
+                            }
+                        }
+
+                        return localSnapshot;
+                    },
+
+                    hasEntregaHoraEntryData: function(entry) {
+                        const periods = entry?.data?.periods || {};
+                        return Object.values(periods).some(period => {
+                            const fronts = period?.fronts || {};
+                            return Object.values(fronts).some(frontData => {
+                                return ['hour1', 'hour2'].some(hourKey => {
+                                    const hourData = frontData?.[hourKey] || {};
+                                    return Utils.safeNumber(hourData.trips, 0) > 0 || Utils.safeNumber(hourData.delivery, 0) > 0;
+                                });
+                            });
+                        });
+                    },
+
+                    resolveEntregaHoraDate: function(snapshot) {
+                        const currentDate = String(snapshot?.currentDate || '').trim();
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(currentDate)) return currentDate;
+
+                        const today = this.getLocalIsoDate();
+                        if (snapshot?.dateEntries?.[today]) return today;
+
+                        const dates = Object.keys(snapshot?.dateEntries || {})
+                            .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date))
+                            .sort()
+                            .reverse();
+                        const dateWithData = dates.find(date => this.hasEntregaHoraEntryData(snapshot.dateEntries[date]));
+                        return dateWithData || dates[0] || today;
+                    },
+
+                    resolveEntregaHoraReferenceTime: function(snapshot) {
+                        return this.normalizeEntregaHoraTime(
+                            snapshot?.ui?.rolling3hReferenceTime ||
+                            snapshot?.rolling3hReferenceTime ||
+                            ''
+                        );
+                    },
+
+                    getEntregaHoraFrontKey: function(frontsData, frente) {
+                        if (!frontsData || typeof frontsData !== 'object') return null;
+                        const requested = this.normalizeEntregaHoraFront(frente);
+                        return Object.keys(frontsData).find(key => this.normalizeEntregaHoraFront(key) === requested) || null;
+                    },
+
+                    getEntregaHoraFrontHourDelivery: function(dateEntry, frente, hourLabel) {
+                        const ref = this.getEntregaHoraPeriodHourRef(hourLabel);
+                        if (!ref) return { delivery: 0, trips: 0 };
+
+                        const frontsData = dateEntry?.data?.periods?.[ref.period]?.fronts || {};
+                        const frontKey = this.getEntregaHoraFrontKey(frontsData, frente);
+                        const hourData = frontKey ? frontsData?.[frontKey]?.[ref.hourKey] : null;
+                        if (!hourData) return { delivery: 0, trips: 0 };
+
+                        const density = Utils.safeNumber(hourData.density, 0);
+                        const trips = Utils.safeNumber(hourData.trips, 0);
+                        const savedDelivery = Utils.safeNumber(hourData.delivery, 0);
+                        const delivery = savedDelivery || (density * trips);
+                        return { delivery, trips };
+                    },
+
+                    collectEntregaHoraFronts: function(snapshot, dateEntry, requestedFronts = []) {
+                        const fronts = new Map();
+                        const addFront = (front) => {
+                            const normalized = this.normalizeEntregaHoraFront(front);
+                            if (normalized && !fronts.has(normalized)) fronts.set(normalized, front);
+                        };
+
+                        (Array.isArray(snapshot?.fronts) ? snapshot.fronts : []).forEach(addFront);
+                        Object.keys(snapshot?.frontConfigs || {}).forEach(addFront);
+                        Object.values(dateEntry?.data?.periods || {}).forEach(period => {
+                            Object.keys(period?.fronts || {}).forEach(addFront);
+                        });
+                        requestedFronts.forEach(addFront);
+                        return Array.from(fronts.values());
+                    },
+
+                    calculateEntregaHoraRolling3hSummary: async function(requestedFronts = []) {
+                        const snapshot = await this.fetchEntregaHoraSnapshot();
+                        if (!snapshot) {
+                            return { byFront: new Map(), totalDelivered: 0, totalTrips: 0 };
+                        }
+
+                        const date = this.resolveEntregaHoraDate(snapshot);
+                        const dateEntry = snapshot?.dateEntries?.[date] || {};
+                        const hours = this.getEntregaHoraWindow(this.resolveEntregaHoraReferenceTime(snapshot));
+                        const allFronts = this.collectEntregaHoraFronts(snapshot, dateEntry, requestedFronts);
+                        const byFront = new Map();
+                        let totalDelivered = 0;
+                        let totalTrips = 0;
+
+                        allFronts.forEach(front => {
+                            const totals = hours.reduce((acc, hour) => {
+                                const data = this.getEntregaHoraFrontHourDelivery(dateEntry, front, hour);
+                                acc.delivery += data.delivery;
+                                acc.trips += data.trips;
+                                return acc;
+                            }, { delivery: 0, trips: 0 });
+
+                            const row = {
+                                delivered: totals.delivery,
+                                trips: totals.trips,
+                                deliveryPerHour: totals.delivery / 3,
+                                tripsPerHour: totals.trips / 3
+                            };
+
+                            byFront.set(this.normalizeEntregaHoraFront(front), row);
+                            totalDelivered += totals.delivery;
+                            totalTrips += totals.trips;
+                        });
+
+                        return {
+                            byFront,
+                            totalDelivered,
+                            totalTrips,
+                            hours,
+                            date
+                        };
+                    },
+
+                    buildWhatsAppScenarioText: async function() {
                         try {
                             DataHandler.calculatePotencial();
                             UI.updateDashboard();
@@ -4406,20 +4708,28 @@
 
                         if (rows.length === 0) return '';
 
-                        const lines = ['*Cenário no momento*', ''];
+                        const entregaHoraSummary = await this.calculateEntregaHoraRolling3hSummary(
+                            rows.map(item => this.formatWhatsFrente(item.frente))
+                        );
+
+                        const lines = ['Cenário no momento', ''];
                         rows.forEach(item => {
                             const frente = this.formatWhatsFrente(item.frente);
                             const potencial = this.formatWhatsNumber(item.capFrente, 0);
                             const caminhoesHora = this.formatWhatsNumber(item.camh, 1, true);
                             const tempoAloc = this.formatWhatsNumber(item.intaloc, 0);
                             const minutoLabel = Utils.safeNumber(item.intaloc, 0) === 1 ? 'minuto' : 'Min';
+                            const realEntrega = entregaHoraSummary.byFront.get(this.normalizeEntregaHoraFront(frente)) || {};
+                            const realCaminhoesHora = this.formatWhatsDotNumber(realEntrega.tripsPerHour || 0, 1);
 
-                            lines.push(`*Frente ${frente} ${potencial} T/h, ${caminhoesHora} C/h, Tempo de alocação ${tempoAloc} ${minutoLabel}*`);
+                            lines.push(`Frente ${frente} ${potencial} T/h, ${caminhoesHora} C/h, Tempo de alocação ${tempoAloc} ${minutoLabel}`);
+                            lines.push(`Real Ultimas 3 horas Entregando Média de ${realCaminhoesHora} C/H`);
                             lines.push('');
                         });
 
                         const totalPotencial = rows.reduce((sum, item) => sum + Utils.safeNumber(item.capFrente, 0), 0);
                         lines.push(`Total de potencial de colheita ${this.formatWhatsNumber(totalPotencial, 0)} T/h`);
+                        lines.push(`Real potencial entregue ${this.formatWhatsDotNumber(entregaHoraSummary.totalDelivered || 0, 1)}`);
                         return lines.join('\n').trim();
                     },
 
@@ -4470,7 +4780,7 @@
                     },
 
                     copyWhatsAppScenario: async function() {
-                        const reportText = this.buildWhatsAppScenarioText();
+                        const reportText = await this.buildWhatsAppScenarioText();
                         if (!reportText) {
                             UI.showToast('Calcule o potencial antes de copiar o cenário.', 'warning');
                             return;
@@ -5336,13 +5646,8 @@
                             if (capTratoresElement) capTratoresElement.value = capTratoresFinal.toFixed(2);
                             if (capFrenteElement) capFrenteElement.value = capFrente.toFixed(2);
                             
-                            // Calculate working hours for this front
-                            const horasTrabalho = frenteData.transporte === 'P' ? 
-                        App.data.horasTrabalhadas.prop : 
-                                App.data.horasTrabalhadas.terc;
-                            
                             // Calculate values
-                            const cotaTH = frenteData.cota / Math.max(1, horasTrabalho);
+                            const cotaTH = Utils.getFrenteCotaHora(frenteData, App.data);
                             
                             // Look for an existing estrategia value in the UI
                             let estrategia;
@@ -5366,11 +5671,8 @@
                             const frota = tempoTotal * 24 * camH;
                             const intAloc = camH > 0 ? 60 / camH : 0;
                             
-                            // Calculate status
-                            const capacidadePercentual = cotaTH > 0 ? (capFrente / cotaTH) * 100 : 0;
-                            const status = capacidadePercentual >= 100 ? 'ÓTIMO' :
-                                          capacidadePercentual >= 90 ? 'BOM' :
-                                          capacidadePercentual >= 75 ? 'REGULAR' : 'INSUFICIENTE';
+                            // Calculate status using the hourly target for this front.
+                            const statusInfo = Utils.getPotencialStatusInfo(capFrente, cotaTH);
                             
                             // Add to potential data
                             App.data.potencial.push({
@@ -5384,7 +5686,7 @@
                                 camh: camH,
                                 frota: frota,
                                 intaloc: intAloc,
-                                status: status
+                                status: statusInfo.status
                             });
                         });
                         
@@ -6421,14 +6723,12 @@
                                                 ${(App.data.potencial || [])
                                                     .filter(p => !reportFrente || p.frente === reportFrente)
                                                     .map(p => {
-                                                        const cota = Utils.safeNumber(p.cota, 0);
+                                                        const frenteData = (App.data.frentes || []).find(f => f.frente === p.frente);
+                                                        const cota = frenteData ? Utils.getFrenteCotaHora(frenteData, App.data) : Utils.safeNumber(p.cota, 0);
                                                         const capFrente = Utils.safeNumber(p.capFrente, 0);
                                                         const estrategia = Utils.safeNumber(p.estrategia, 0);
                                                         const frota = Utils.safeNumber(p.frota, 0);
-                                                        const capacidadePercentual = cota > 0 ? (capFrente / cota) * 100 : 0;
-                                                        const status = capacidadePercentual >= 100 ? 'ÓTIMO' :
-                                                            capacidadePercentual >= 90 ? 'BOM' :
-                                                            capacidadePercentual >= 75 ? 'REGULAR' : 'INSUFICIENTE';
+                                                        const statusInfo = Utils.getPotencialStatusInfo(capFrente, cota);
                                                         return `
                                                             <tr>
                                                                 <td>${Utils.escapeHtml(p.frente)}</td>
@@ -6436,7 +6736,7 @@
                                                                 <td>${capFrente.toFixed(2)}</td>
                                                                 <td>${estrategia.toFixed(2)}</td>
                                                                 <td>${frota.toFixed(2)}</td>
-                                                                <td>${status}</td>
+                                                                <td>${statusInfo.status}</td>
                                                             </tr>
                                                         `;
                                                     }).join('')}
@@ -6820,27 +7120,19 @@
                         App.data.frentes.forEach(frente => {
                             // Find potential data for this front
                             const potencialData = App.data.potencial.find(p => p.frente === frente.frente);
+                            const cotaHora = Utils.getFrenteCotaHora(frente, App.data);
                             
                             // Default strategy value
-                            const defaultEstrategia = potencialData ? potencialData.estrategia : Math.round(frente.cota / 21);
+                            const defaultEstrategia = potencialData ? potencialData.estrategia : Math.round(cotaHora);
                             
                             // Calculate status display
-                            const capacidadePercentual = potencialData && potencialData.cota > 0 ? 
-                                (potencialData.capFrente / potencialData.cota) * 100 : 0;
-                                
-                            const status = capacidadePercentual >= 100 ? 'ÓTIMO' :
-                                capacidadePercentual >= 90 ? 'BOM' :
-                                capacidadePercentual >= 75 ? 'REGULAR' : 'INSUFICIENTE';
-                                
-                            const statusClass = capacidadePercentual >= 100 ? 'badge-success' :
-                                capacidadePercentual >= 90 ? 'badge-info' :
-                                capacidadePercentual >= 75 ? 'badge-warning' : 'badge-danger';
+                            const statusInfo = Utils.getPotencialStatusInfo(potencialData?.capFrente, cotaHora);
                             
                             const row = document.createElement('tr');
                             row.setAttribute('data-frente', frente.frente);
                             row.innerHTML = `
                                 <td>${frente.frente}</td>
-                                <td><input type="text" class="potencial-cota" value="${potencialData ? potencialData.cota.toFixed(2) : '0.00'}" readonly></td>
+                                <td><input type="text" class="potencial-cota" value="${cotaHora.toFixed(2)}" readonly></td>
                                 <td><input type="text" class="potencial-maquinas" value="${potencialData ? potencialData.capMaquinas.toFixed(2) : '0.00'}" readonly></td>
                                 <td><input type="text" class="potencial-tratores" value="${potencialData ? potencialData.capTratores.toFixed(2) : '0.00'}" readonly></td>
                                 <td><input type="text" class="potencial-limitante" value="${potencialData ? potencialData.capFrente.toFixed(2) : '0.00'}" readonly></td>
@@ -6849,7 +7141,7 @@
                                 <td><input type="text" class="potencial-camh" value="${potencialData ? potencialData.camh.toFixed(2) : '0.00'}" readonly></td>
                                 <td><input type="text" class="potencial-frota" value="${potencialData ? potencialData.frota.toFixed(2) : '0.00'}" readonly></td>
                                 <td><input type="text" class="potencial-intaloc" value="${potencialData ? potencialData.intaloc.toFixed(2) : '0.00'}" readonly></td>
-                                <td><span class="badge ${statusClass} status-badge">${status}</span></td>
+                                <td><span class="badge ${statusInfo.badgeClass} status-badge">${statusInfo.status}</span></td>
                             `;
                             
                             // Add event listener for strategy input
@@ -6869,7 +7161,7 @@
                     updatePotencialTotals: function() {
                         if (!App.data.potencial || App.data.potencial.length === 0) return;
                         
-                        const totalCota = App.data.potencial.reduce((sum, p) => sum + p.cota, 0);
+                        const totalCota = App.data.frentes.reduce((sum, frente) => sum + Utils.getFrenteCotaHora(frente, App.data), 0);
                         const totalMaquinas = App.data.potencial.reduce((sum, p) => sum + p.capMaquinas, 0);
                         const totalTratores = App.data.potencial.reduce((sum, p) => sum + p.capTratores, 0);
                         const totalLimitante = App.data.potencial.reduce((sum, p) => sum + p.capFrente, 0);
@@ -7976,7 +8268,9 @@
                         let highestEfficiency = 0;
                         
                         App.data.potencial.forEach(p => {
-                            const efficiency = p.cota > 0 ? (p.capFrente / p.cota) * 100 : 0;
+                            const frenteData = App.data.frentes.find(f => f.frente === p.frente);
+                            const cotaHora = frenteData ? Utils.getFrenteCotaHora(frenteData, App.data) : Utils.safeNumber(p.cota, 0);
+                            const efficiency = Utils.getPotencialStatusInfo(p.capFrente, cotaHora).percentual;
                             if (efficiency > highestEfficiency) {
                                 highestEfficiency = efficiency;
                                 mostEfficientFront = p.frente;
@@ -7997,7 +8291,7 @@
 
                         if (App.data.frentes.length === 0 || App.data.potencial.length === 0) {
                             const emptyRow = document.createElement('tr');
-                            emptyRow.innerHTML = '<td colspan="6" class="empty-state">Nenhuma frente cadastrada. Use a aba "Cadastrar Frente".</td>';
+                            emptyRow.innerHTML = '<td colspan="7" class="empty-state">Nenhuma frente cadastrada. Use a aba "Cadastrar Frente".</td>';
                             tableBody.appendChild(emptyRow);
                             return;
                         }
@@ -8005,25 +8299,18 @@
                         App.data.frentes.forEach(frente => {
                             const potencial = App.data.potencial.find(p => p.frente === frente.frente);
                             if (!potencial) return;
-                            
-                            const capacidadePercentual = potencial.cota > 0 ? 
-                                (potencial.capFrente / potencial.cota) * 100 : 0;
-                                
-                            const status = capacidadePercentual >= 100 ? 'ÓTIMO' :
-                                capacidadePercentual >= 90 ? 'BOM' :
-                                capacidadePercentual >= 75 ? 'REGULAR' : 'INSUFICIENTE';
-                                
-                            const statusClass = capacidadePercentual >= 100 ? 'success' :
-                                capacidadePercentual >= 90 ? 'info' :
-                                capacidadePercentual >= 75 ? 'warning' : 'danger';
+
+                            const cotaHora = Utils.getFrenteCotaHora(frente, App.data);
+                            const statusInfo = Utils.getPotencialStatusInfo(potencial.capFrente, cotaHora);
                             
                             const row = document.createElement('tr');
                             row.innerHTML = `
                                 <td>${frente.frente}</td>
-                                <td>${frente.cota.toLocaleString('pt-BR')}</td>
+                                <td>${Utils.safeNumber(frente.cota, 0).toLocaleString('pt-BR')}</td>
+                                <td>${cotaHora.toFixed(2)}</td>
                                 <td>${potencial.capFrente.toFixed(2)}</td>
-                                <td>${Math.round(capacidadePercentual)}%</td>
-                                <td><span class="badge badge-${statusClass}">${status}</span></td>
+                                <td>${Math.round(statusInfo.percentual)}%</td>
+                                <td><span class="badge ${statusInfo.badgeClass}">${statusInfo.status}</span></td>
                                 <td>
                                     <button class="btn btn-sm btn-view-frente" data-frente="${frente.frente}" aria-label="Ver detalhes">
                                         <i class="fas fa-eye"></i>
@@ -8933,9 +9220,11 @@
                         const values = [];
                         
                         App.data.potencial.forEach(p => {
-                            if (p.cota > 0) {
+                            const frenteData = App.data.frentes.find(f => f.frente === p.frente);
+                            const cotaHora = frenteData ? Utils.getFrenteCotaHora(frenteData, App.data) : Utils.safeNumber(p.cota, 0);
+                            if (cotaHora > 0) {
                                 labels.push(`Frente ${p.frente}`);
-                                values.push((p.capFrente / p.cota) * 100);
+                                values.push(Utils.getPotencialStatusInfo(p.capFrente, cotaHora).percentual);
                             }
                         });
                         
