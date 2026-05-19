@@ -14,6 +14,7 @@ Projeto em HTML único (standalone).
 ## Safra → Potencial
 
 - A tela **Potencial** é carregada de `potencial.html` e sincroniza dados no Supabase por `plantId`.
+- A tela **Tropical** é carregada de `tropical.html` e funciona como sistema local vazio para cadastrar dimensionamento, capacidade, cotas, qualidade, equipamentos, paradas e checklist.
 
 ### SQL (Supabase)
 

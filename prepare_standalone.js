@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const distDir = path.resolve('dist');
-const htmlFiles = ['index.html', 'potencial.html', 'cota.html', 'entrega-hora.html', 'meta.html'];
+const htmlFiles = ['index.html', 'potencial.html', 'cota.html', 'entrega-hora.html', 'meta.html', 'tropical.html'];
 const assetFiles = ['audit-logger.js'];
 
 if (fs.existsSync(distDir)) {

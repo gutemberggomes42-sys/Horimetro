@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema CTT BP Tropical</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --soft: #f8fafc;
+      --text: #17212f;
+      --muted: #64748b;
+      --line: #d9e1ea;
+      --primary: #1f7a4d;
+      --primary-dark: #145d3a;
+      --blue: #2563eb;
+      --amber: #b7791f;
+      --red: #d64545;
+      --ink: #0f172a;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr; }
+    .topbar {
+      background: var(--ink);
+      color: #fff;
+      padding: 14px clamp(14px, 3vw, 28px);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 260px; }
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius);
+      background: var(--primary);
+      display: grid;
+      place-items: center;
+      font-weight: 950;
+      color: #fff;
+    }
+    h1 { margin: 0; font-size: 1.05rem; line-height: 1.15; }
+    .subtitle { margin: 3px 0 0; color: #cbd5e1; font-size: .78rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+    .btn {
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      min-height: 38px;
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 850;
+      font-size: .85rem;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .08);
+    }
+    .btn.primary { background: var(--primary); color: #fff; border-color: var(--primary-dark); }
+    .btn.ghost { background: rgba(255,255,255,.09); color: #fff; border-color: rgba(255,255,255,.18); box-shadow: none; }
+    .btn.warn { background: #fff8e7; color: #8a5a12; border-color: #f0d59d; }
+    .btn.danger { background: #fff1f1; color: #a52c2c; border-color: #f3b7b7; }
+    .btn.muted { background: #eef2f7; color: #334155; border-color: var(--line); }
+    .btn:focus, input:focus, select:focus, textarea:focus {
+      outline: 3px solid rgba(37, 99, 235, .18);
+      outline-offset: 1px;
+    }
+    .icon { width: 16px; height: 16px; flex: 0 0 auto; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .nav {
+      padding: 10px clamp(10px, 3vw, 28px);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+    }
+    .tab {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #334155;
+      border-radius: var(--radius);
+      padding: 10px 13px;
+      min-width: max-content;
+      font-weight: 850;
+      font-size: .86rem;
+    }
+    .tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    main { padding: clamp(14px, 3vw, 28px); width: min(1480px, 100%); margin: 0 auto; }
+    .stack { display: grid; gap: 16px; }
+    .grid { display: grid; gap: 14px; }
+    .grid.kpi { grid-template-columns: repeat(6, minmax(150px, 1fr)); }
+    .grid.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.form { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+    .panel, .card, .kpi-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .panel { padding: 16px; }
+    .card, .kpi-card { padding: 14px; }
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .panel-title h2, .panel-title h3 { margin: 0; font-size: 1rem; }
+    .panel-title small { color: var(--muted); font-weight: 750; }
+    .kpi-card { min-height: 110px; display: grid; align-content: space-between; }
+    .kpi-label { color: var(--muted); font-size: .74rem; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+    .kpi-value { font-size: clamp(1.25rem, 2vw, 1.7rem); font-weight: 950; margin-top: 8px; line-height: 1.05; }
+    .kpi-note { color: var(--muted); font-size: .76rem; margin-top: 6px; }
+    .positive { color: var(--primary-dark); }
+    .negative { color: var(--red); }
+    .muted-text { color: var(--muted); }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 14px; }
+    .field { display: grid; gap: 5px; min-width: 140px; }
+    label { color: #334155; font-size: .75rem; font-weight: 900; text-transform: uppercase; letter-spacing: .035em; }
+    input, select, textarea {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      color: var(--text);
+      background: #fff;
+    }
+    textarea { resize: vertical; min-height: 76px; }
+    .table-wrap { width: 100%; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+    table { width: 100%; border-collapse: collapse; min-width: 780px; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: .88rem; }
+    th { background: #f1f5f9; color: #334155; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; position: sticky; top: 0; z-index: 1; }
+    tr:last-child td { border-bottom: 0; }
+    td.number, th.number, .number { text-align: right; }
+    .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      color: #334155;
+      font-size: .74rem;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .badge.green { background: #ecfdf3; color: #17633d; border-color: #b7e3c9; }
+    .badge.red { background: #fff1f1; color: #a52c2c; border-color: #f3b7b7; }
+    .badge.blue { background: #eef5ff; color: #1d4ed8; border-color: #bcd1ff; }
+    .empty {
+      border: 1px dashed #b9c4d2;
+      border-radius: var(--radius);
+      background: #fbfdff;
+      padding: 18px;
+      color: var(--muted);
+      font-weight: 750;
+    }
+    .bars { display: grid; gap: 10px; }
+    .bar-row { display: grid; grid-template-columns: minmax(110px, 210px) 1fr minmax(70px, max-content); gap: 10px; align-items: center; }
+    .bar-label { font-weight: 850; font-size: .84rem; overflow-wrap: anywhere; }
+    .bar-track { height: 12px; background: #e8eef5; border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; min-width: 2px; background: var(--primary); border-radius: 999px; }
+    .front-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
+    .front-card h3 { margin: 0; font-size: 1rem; }
+    .front-meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .chip { padding: 4px 7px; background: #f1f5f9; border: 1px solid var(--line); border-radius: 6px; font-size: .76rem; font-weight: 750; }
+    .checklist { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+    .check-item {
+      min-height: 48px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+    .check-item.done { background: #effaf3; color: #276044; border-color: #b8dec7; }
+    .check-item input { width: 18px; height: 18px; min-height: 18px; margin-top: 1px; }
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 50;
+      background: var(--ink);
+      color: #fff;
+      border-radius: var(--radius);
+      padding: 11px 13px;
+      box-shadow: var(--shadow);
+      font-weight: 850;
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: .18s ease;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .form-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    @media (max-width: 1100px) {
+      .grid.kpi { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+      .grid.two, .grid.three, .grid.form { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .topbar { align-items: flex-start; }
+      .actions { justify-content: flex-start; width: 100%; }
+      .grid.kpi { grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: 1fr; gap: 5px; }
+      main { padding: 12px; }
+      .btn { flex: 1 1 auto; }
+    }
+    @media print {
+      .topbar, .nav, .actions, .row-actions, .form-actions, form { display: none !important; }
+      main { width: 100%; padding: 0; }
+      .panel, .card, .kpi-card { box-shadow: none; break-inside: avoid; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute">
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 15H6L5 6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  </svg>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">CTT</div>
+        <div>
+          <h1>Sistema CTT BP Tropical</h1>
+          <p class="subtitle">Dimensionamento, frota, produção, paradas e checklist</p>
+        </div>
+      </div>
+      <div class="actions">
+        <span id="save-status" class="badge">Sistema vazio</span>
+        <button class="btn primary" id="save-btn"><svg class="icon"><use href="#i-save"></use></svg>Salvar</button>
+        <button class="btn ghost" id="export-btn"><svg class="icon"><use href="#i-download"></use></svg>Exportar</button>
+        <button class="btn ghost" id="import-btn"><svg class="icon"><use href="#i-upload"></use></svg>Importar</button>
+        <button class="btn ghost" id="print-btn"><svg class="icon"><use href="#i-print"></use></svg>Imprimir</button>
+        <button class="btn warn" id="reset-btn"><svg class="icon"><use href="#i-reset"></use></svg>Limpar</button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </div>
+    </header>
+    <nav class="nav" id="tabs"></nav>
+    <main id="content"></main>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script>
+    const DEFAULT_MONTHS = ['MARÇO','ABRIL','MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO'];
+    const tabs = [
+      ['dashboard', 'Dashboard'],
+      ['dimensionamento', 'Dimensionamento'],
+      ['carregamento', 'Carreg. x Ciclo'],
+      ['plano', 'Plano e Cotas'],
+      ['qualidade', 'Produção/Qualidade'],
+      ['equipamentos', 'Equipamentos'],
+      ['paradas', 'Paradas'],
+      ['checklist', 'Checklist']
+    ];
+    const plantId = (() => {
+      const params = new URLSearchParams(window.location.search);
+      const queryPlant = String(params.get('plantId') || '').trim();
+      if (queryPlant) return queryPlant;
+      try { return String(localStorage.getItem('selectedPlantId') || 'tropical').trim() || 'tropical'; }
+      catch (e) { return 'tropical'; }
+    })();
+    const storageKey = `cttBpTropical_v2_${plantId}`;
+    const content = document.getElementById('content');
+    const tabsEl = document.getElementById('tabs');
+    const statusEl = document.getElementById('save-status');
+    let activeTab = 'dashboard';
+    let ui = {
+      qualityMode: 'diario',
+      qualitySearch: '',
+      equipmentSearch: '',
+      stopSearch: '',
+      stopClass: '',
+      edit: {}
+    };
+    let state = loadState();
+
+    function blankState() {
+      return {
+        version: 2,
+        savedAt: null,
+        dimensionamento: {
+          frente: '', pscDiario: '', horasOperacao: '', estrategia: '', capacidadeViagem: '',
+          tempoVazio: '', tempoPalhada: '', tempoCarregado: '', tempoUsina: ''
+        },
+        carregamento: { frente: '', densidadeTransbordo: '', transbordosOperando: '', rows: [] },
+        planoSafra: { meses: DEFAULT_MONTHS.map(mes => ({ mes, valor: '' })), cotas: [] },
+        qualidade: { diario: [], parcial: [] },
+        equipamentos: [],
+        paradas: { rows: [] },
+        checklist: [],
+        checkStatus: {},
+        producaoColhedoras: []
+      };
+    }
+    function clone(value) { return JSON.parse(JSON.stringify(value)); }
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+        if (saved && saved.version === 2) return normalizeState(saved);
+      } catch (e) {}
+      return blankState();
+    }
+    function normalizeState(next) {
+      const base = blankState();
+      return {
+        ...base,
+        ...next,
+        dimensionamento: { ...base.dimensionamento, ...(next.dimensionamento || {}) },
+        carregamento: { ...base.carregamento, ...(next.carregamento || {}), rows: Array.isArray(next?.carregamento?.rows) ? next.carregamento.rows : [] },
+        planoSafra: {
+          meses: Array.isArray(next?.planoSafra?.meses) && next.planoSafra.meses.length ? next.planoSafra.meses : base.planoSafra.meses,
+          cotas: Array.isArray(next?.planoSafra?.cotas) ? next.planoSafra.cotas : []
+        },
+        qualidade: {
+          diario: Array.isArray(next?.qualidade?.diario) ? next.qualidade.diario : [],
+          parcial: Array.isArray(next?.qualidade?.parcial) ? next.qualidade.parcial : []
+        },
+        equipamentos: Array.isArray(next.equipamentos) ? next.equipamentos : [],
+        paradas: { rows: Array.isArray(next?.paradas?.rows) ? next.paradas.rows : [] },
+        checklist: Array.isArray(next.checklist) ? next.checklist : [],
+        checkStatus: next.checkStatus || {},
+        producaoColhedoras: Array.isArray(next.producaoColhedoras) ? next.producaoColhedoras : []
+      };
+    }
+    function persist(showMessage = false) {
+      state.savedAt = new Date().toISOString();
+      localStorage.setItem(storageKey, JSON.stringify(state));
+      updateStatus();
+      if (showMessage) toast('Dados salvos.');
+    }
+    function updateStatus() {
+      statusEl.textContent = state.savedAt ? new Date(state.savedAt).toLocaleString('pt-BR') : 'Sistema vazio';
+    }
+    function toast(message) {
+      const el = document.getElementById('toast');
+      el.textContent = message;
+      el.classList.add('show');
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => el.classList.remove('show'), 2200);
+    }
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+    }
+    function num(value, fallback = 0) {
+      if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+      const raw = String(value ?? '').trim();
+      if (!raw) return fallback;
+      const parsed = Number(raw.replace(/\./g, '').replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    function br(value, decimals = 2) {
+      const n = num(value, 0);
+      return n.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+    function intbr(value) { return Math.round(num(value, 0)).toLocaleString('pt-BR'); }
+    function hoursFromMinutes(value) {
+      const minutes = num(value, 0);
+      const h = Math.floor(minutes / 60);
+      const m = Math.round(minutes % 60);
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+    function minutesFromHHMM(value) {
+      const match = String(value || '').trim().match(/^(\d+):(\d{2})$/);
+      if (!match) return num(value, 0);
+      return Number(match[1]) * 60 + Number(match[2]);
+    }
+    function parseList(value) {
+      return String(value || '').split(/[\n,;]+/).map(v => v.trim()).filter(Boolean);
+    }
+    function formatList(list) { return (list || []).join('\n'); }
+    function parseSupport(value) {
+      return String(value || '').split(/\n+/).map(v => v.trim()).filter(Boolean).map(line => {
+        const parts = line.split(':');
+        if (parts.length > 1) return { tipo: parts.shift().trim(), equipamento: parts.join(':').trim() };
+        return { tipo: 'APOIO', equipamento: line };
+      });
+    }
+    function formatSupport(list) {
+      return (list || []).map(item => `${item.tipo || 'APOIO'}: ${item.equipamento || ''}`).join('\n');
+    }
+    function getPath(path) { return path.split('.').reduce((obj, key) => obj?.[key], state); }
+    function setPath(path, value) {
+      const parts = path.split('.');
+      let target = state;
+      parts.slice(0, -1).forEach(key => {
+        if (!target[key] || typeof target[key] !== 'object') target[key] = {};
+        target = target[key];
+      });
+      target[parts.at(-1)] = value;
+    }
+    function inputValue(el) { return el.type === 'number' ? (el.value === '' ? '' : num(el.value)) : el.value; }
+    function formValue(form, name) { return new FormData(form).get(name) ?? ''; }
+    function calcMetrics() {
+      const d = state.dimensionamento;
+      const c = state.carregamento;
+      const rows = Array.isArray(c.rows) ? c.rows : [];
+      const running = rows.filter(row => String(row.status || '').toLowerCase() === 'rodando' && num(row.carregamento) > 0);
+      const avg = (arr, key) => arr.length ? arr.reduce((sum, row) => sum + num(row[key]), 0) / arr.length : 0;
+      const dens = num(c.densidadeTransbordo);
+      const avgCarreg = avg(running, 'carregamento');
+      const avgCiclo = avg(running, 'ciclo');
+      const colhedoraCap = running.reduce((sum, row) => sum + (num(row.carregamento) > 0 ? (60 / num(row.carregamento)) * dens : 0), 0);
+      const transbordoCap = avgCiclo > 0 ? ((60 / avgCiclo) * dens) * num(c.transbordosOperando) : 0;
+      const frontCap = Math.min(colhedoraCap || 0, transbordoCap || 0);
+      const pscHourly = num(d.horasOperacao) > 0 ? num(d.pscDiario) / num(d.horasOperacao) : 0;
+      const trucksPerHour = num(d.capacidadeViagem) > 0 ? num(d.estrategia) / num(d.capacidadeViagem) : 0;
+      const allocationInterval = num(d.estrategia) > 0 ? (60 / num(d.estrategia)) * num(d.capacidadeViagem) : 0;
+      const truckCycleMin = num(d.tempoVazio) + num(d.tempoPalhada) + num(d.tempoCarregado) + num(d.tempoUsina);
+      const truckCycleHour = truckCycleMin / 60;
+      const fleetNeeded = truckCycleHour * trucksPerHour;
+      const quotaTotal = (state.planoSafra?.cotas || []).reduce((sum, row) => sum + num(row.cota), 0);
+      const tcTotal = (state.qualidade?.diario || []).reduce((sum, row) => sum + num(row.TC), 0);
+      const cargasTotal = (state.qualidade?.diario || []).reduce((sum, row) => sum + num(row.Cargas), 0);
+      const stopMinutes = (state.paradas?.rows || []).reduce((sum, row) => sum + num(row.minutos), 0);
+      return { running, avgCarreg, avgCiclo, aux: avgCiclo - avgCarreg, colhedoraCap, transbordoCap, frontCap, pscHourly, trucksPerHour, allocationInterval, truckCycleMin, truckCycleHour, fleetNeeded, quotaTotal, tcTotal, cargasTotal, stopMinutes };
+    }
+    function kpi(label, value, note = '', tone = '') {
+      return `<div class="kpi-card"><div><div class="kpi-label">${esc(label)}</div><div class="kpi-value ${tone}">${value}</div></div><div class="kpi-note">${esc(note)}</div></div>`;
+    }
+    function empty(message) { return `<div class="empty">${esc(message)}</div>`; }
+    function barList(rows, labelFn, valueFn, formatter = v => br(v, 0), color = 'var(--primary)') {
+      if (!rows.length) return empty('Nenhum registro cadastrado.');
+      const max = Math.max(...rows.map(valueFn), 1);
+      return `<div class="bars">${rows.map(row => {
+        const val = valueFn(row);
+        const width = Math.max(2, Math.min(100, (val / max) * 100));
+        return `<div class="bar-row"><div class="bar-label">${esc(labelFn(row))}</div><div class="bar-track"><div class="bar-fill" style="width:${width}%;background:${color}"></div></div><div class="number">${formatter(val)}</div></div>`;
+      }).join('')}</div>`;
+    }
+    function renderTabs() {
+      tabsEl.innerHTML = tabs.map(([id, label]) => `<button class="tab ${id === activeTab ? 'active' : ''}" data-tab="${id}">${label}</button>`).join('');
+    }
+    function render() {
+      clearTimeout(render.timer);
+      renderTabs();
+      if (activeTab === 'dashboard') content.innerHTML = renderDashboard();
+      if (activeTab === 'dimensionamento') content.innerHTML = renderDimensionamento();
+      if (activeTab === 'carregamento') content.innerHTML = renderCarregamento();
+      if (activeTab === 'plano') content.innerHTML = renderPlano();
+      if (activeTab === 'qualidade') content.innerHTML = renderQualidade();
+      if (activeTab === 'equipamentos') content.innerHTML = renderEquipamentos();
+      if (activeTab === 'paradas') content.innerHTML = renderParadas();
+      if (activeTab === 'checklist') content.innerHTML = renderChecklist();
+      bindCurrentView();
+      updateStatus();
+    }
+    function scheduleRender() {
+      clearTimeout(render.timer);
+      render.timer = setTimeout(() => {
+        const active = document.activeElement;
+        if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) {
+          scheduleRender();
+          return;
+        }
+        render();
+      }, 120);
+    }
+    function renderDashboard() {
+      const m = calcMetrics();
+      const qualityRows = (state.qualidade?.diario || []);
+      const quotaRows = state.planoSafra?.cotas || [];
+      const gap = m.frontCap - m.pscHourly;
+      return `<div class="stack">
+        <section class="grid kpi">
+          ${kpi('Capacidade frente', `${br(m.frontCap)} t/h`, `Colhedoras ${br(m.colhedoraCap)} | Transbordos ${br(m.transbordoCap)}`, gap >= 0 ? 'positive' : 'negative')}
+          ${kpi('PSC horário', `${br(m.pscHourly)} t/h`, `${intbr(state.dimensionamento.pscDiario)} t/d em ${br(state.dimensionamento.horasOperacao, 0)} h`)}
+          ${kpi('Frota necessária', `${br(m.fleetNeeded, 1)}`, `${br(m.trucksPerHour, 2)} caminhões/hora`)}
+          ${kpi('Intervalo alocação', `${br(m.allocationInterval, 1)} min`, `Ciclo caminhão ${br(m.truckCycleMin, 0)} min`)}
+          ${kpi('Cota total', `${intbr(m.quotaTotal)} t`, `${quotaRows.length} frentes cadastradas`)}
+          ${kpi('Paradas', `${hoursFromMinutes(m.stopMinutes)}`, `${(state.paradas?.rows || []).length} registros cadastrados`)}
+        </section>
+        <section class="grid two">
+          <div class="panel">
+            <div class="panel-title"><h2>Produção por frente</h2><small>TC diário</small></div>
+            ${barList(qualityRows, r => `${r.Código || ''} ${r.Descrição || ''}`, r => num(r.TC), v => br(v, 0), 'var(--blue)')}
+          </div>
+          <div class="panel">
+            <div class="panel-title"><h2>Cotas por frente</h2><small>Plano da safra</small></div>
+            ${barList(quotaRows, r => `Frente ${r.frente || '-'} - ${r.descricao || ''}`, r => num(r.cota), v => br(v, 0), 'var(--primary)')}
+          </div>
+        </section>
+        <section class="grid three">
+          <div class="card"><span class="badge blue">Cadastros</span><h3>${state.equipamentos.length} frentes</h3><p class="muted-text">${intbr(state.equipamentos.reduce((sum, f) => sum + (f.colhedoras?.length || 0) + (f.transbordos?.length || 0), 0))} equipamentos vinculados.</p></div>
+          <div class="card"><span class="badge ${gap >= 0 ? 'green' : 'red'}">${gap >= 0 ? 'Sobra' : 'Déficit'}</span><h3>${br(Math.abs(gap))} t/h</h3><p class="muted-text">Diferença entre capacidade calculada e PSC horário.</p></div>
+          <div class="card"><span class="badge">Checklist</span><h3>${Object.values(state.checkStatus || {}).filter(Boolean).length}/${state.checklist.length}</h3><p class="muted-text">Itens concluídos do turno.</p></div>
+        </section>
+      </div>`;
+    }
+    function formField(label, path, type = 'number', step = '0.01') {
+      const value = getPath(path) ?? '';
+      return `<div class="field"><label>${label}</label><input type="${type}" step="${step}" value="${esc(value)}" data-bind="${path}"></div>`;
+    }
+    function renderDimensionamento() {
+      const m = calcMetrics();
+      return `<div class="stack">
+        <section class="panel">
+          <div class="panel-title"><h2>Dimensionamento</h2><small>cadastro principal</small></div>
+          <div class="grid form">
+            ${formField('Frente', 'dimensionamento.frente', 'text')}
+            ${formField('PSC diário (t/d)', 'dimensionamento.pscDiario')}
+            ${formField('Horas operação', 'dimensionamento.horasOperacao')}
+            ${formField('Estratégia (t/h)', 'dimensionamento.estrategia')}
+            ${formField('Capacidade por viagem', 'dimensionamento.capacidadeViagem')}
+            ${formField('Trajeto vazio (min)', 'dimensionamento.tempoVazio')}
+            ${formField('Tempo de palhada (min)', 'dimensionamento.tempoPalhada')}
+            ${formField('Trajeto carregado (min)', 'dimensionamento.tempoCarregado')}
+            ${formField('Tempo de usina (min)', 'dimensionamento.tempoUsina')}
+          </div>
+        </section>
+        <section class="grid kpi">
+          ${kpi('PSC horário', `${br(m.pscHourly)} t/h`, 'PSC diário dividido por horas')}
+          ${kpi('Capacidade da frente', `${br(m.frontCap)} t/h`, 'Vem de carregamento x ciclo')}
+          ${kpi('Caminhões/hora', br(m.trucksPerHour, 2), 'Estratégia / capacidade viagem')}
+          ${kpi('Intervalo alocação', `${br(m.allocationInterval, 1)} min`, '60 / estratégia x viagem')}
+          ${kpi('Ciclo caminhões', `${br(m.truckCycleMin, 0)} min`, `${br(m.truckCycleHour, 2)} h`)}
+          ${kpi('Frota necessária', br(m.fleetNeeded, 2), 'Ciclo hora x caminhões/hora')}
+        </section>
+      </div>`;
+    }
+    function renderCarregamento() {
+      const c = state.carregamento;
+      const m = calcMetrics();
+      const editRow = ui.edit.carregamento != null ? c.rows[ui.edit.carregamento] : {};
+      const editProd = ui.edit.producao != null ? state.producaoColhedoras[ui.edit.producao] : {};
+      return `<div class="stack">
+        <section class="panel">
+          <div class="panel-title"><h2>Cadastro de carregamento x ciclo</h2><small>${(c.rows || []).length} equipamentos</small></div>
+          <div class="grid form">
+            ${formField('Frente', 'carregamento.frente', 'text')}
+            ${formField('Densidade transbordo', 'carregamento.densidadeTransbordo')}
+            ${formField('Transbordos operando', 'carregamento.transbordosOperando', 'number', '1')}
+          </div>
+          <form id="carreg-form" class="stack" style="margin-top:14px">
+            <div class="grid form">
+              <div class="field"><label>Equipamento</label><input name="equipamento" value="${esc(editRow?.equipamento || '')}" required></div>
+              <div class="field"><label>Carreg. min</label><input name="carregamento" type="number" step="0.01" value="${esc(editRow?.carregamento || '')}"></div>
+              <div class="field"><label>Ciclo min</label><input name="ciclo" type="number" step="0.01" value="${esc(editRow?.ciclo || '')}"></div>
+              <div class="field"><label>Status</label><select name="status"><option ${editRow?.status !== 'Parado' ? 'selected' : ''}>Rodando</option><option ${editRow?.status === 'Parado' ? 'selected' : ''}>Parado</option></select></div>
+            </div>
+            <div class="form-actions"><button class="btn primary"><svg class="icon"><use href="#i-plus"></use></svg>${ui.edit.carregamento != null ? 'Atualizar' : 'Cadastrar'}</button>${ui.edit.carregamento != null ? '<button class="btn muted" type="button" data-action="cancel-edit">Cancelar edição</button>' : ''}</div>
+          </form>
+        </section>
+        <section class="grid kpi">
+          ${kpi('Tempo carreg. médio', `${br(m.avgCarreg, 1)} min`, `${m.running.length} rodando`)}
+          ${kpi('Tempo ciclo médio', `${br(m.avgCiclo, 1)} min`, 'Base status Rodando')}
+          ${kpi('Tempo auxiliar', `${br(m.aux, 1)} min`, 'Ciclo médio - carregamento médio', m.aux >= 0 ? 'positive' : 'negative')}
+          ${kpi('Capacidade transbordos', `${br(m.transbordoCap)} t/h`, `${br(state.carregamento.transbordosOperando, 0)} transbordos`)}
+          ${kpi('Capacidade colhedoras', `${br(m.colhedoraCap)} t/h`, 'Soma CD/h')}
+          ${kpi('Capacidade frente', `${br(m.frontCap)} t/h`, 'Menor capacidade do sistema')}
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Equipamentos em carregamento</h2><small>capacidade calculada</small></div>
+          ${(c.rows || []).length ? `<div class="table-wrap"><table><thead><tr><th>Equipamento</th><th class="number">Carreg.</th><th class="number">Ciclo</th><th>Status</th><th class="number">Capacidade CD/h</th><th></th></tr></thead><tbody>${c.rows.map((row, index) => {
+            const cap = String(row.status).toLowerCase() === 'rodando' && num(row.carregamento) > 0 ? (60 / num(row.carregamento)) * num(c.densidadeTransbordo) : 0;
+            return `<tr><td>${esc(row.equipamento)}</td><td class="number">${br(row.carregamento, 1)}</td><td class="number">${br(row.ciclo, 1)}</td><td><span class="badge ${row.status === 'Rodando' ? 'green' : 'red'}">${esc(row.status)}</span></td><td class="number"><strong>${br(cap)}</strong></td><td class="row-actions"><button class="btn muted" data-action="edit-carreg" data-index="${index}"><svg class="icon"><use href="#i-edit"></use></svg>Editar</button><button class="btn danger" data-action="delete-carreg" data-index="${index}"><svg class="icon"><use href="#i-trash"></use></svg>Excluir</button></td></tr>`;
+          }).join('')}</tbody></table></div>` : empty('Nenhum equipamento cadastrado.')}
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Produção das colhedoras</h2><small>${state.producaoColhedoras.length} registros</small></div>
+          <form id="producao-form" class="stack">
+            <div class="grid form">
+              <div class="field"><label>Frente</label><input name="frente" value="${esc(editProd?.frente || '')}" required></div>
+              <div class="field"><label>Colhedora</label><input name="colhedora" value="${esc(editProd?.colhedora || '')}" required></div>
+              <div class="field"><label>Tempo carreg.</label><input name="carregamento" type="number" step="0.01" value="${esc(editProd?.carregamento || '')}"></div>
+              <div class="field"><label>Tempo ciclo</label><input name="ciclo" type="number" step="0.01" value="${esc(editProd?.ciclo || '')}"></div>
+            </div>
+            <div class="form-actions"><button class="btn primary"><svg class="icon"><use href="#i-plus"></use></svg>${ui.edit.producao != null ? 'Atualizar' : 'Cadastrar'}</button>${ui.edit.producao != null ? '<button class="btn muted" type="button" data-action="cancel-edit">Cancelar edição</button>' : ''}</div>
+          </form>
+          ${state.producaoColhedoras.length ? `<div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Frente</th><th>Colhedora</th><th class="number">Carreg.</th><th class="number">Ciclo</th><th></th></tr></thead><tbody>${state.producaoColhedoras.map((row, index) => `<tr><td>${esc(row.frente)}</td><td>${esc(row.colhedora)}</td><td class="number">${br(row.carregamento, 1)}</td><td class="number">${br(row.ciclo, 1)}</td><td class="row-actions"><button class="btn muted" data-action="edit-producao" data-index="${index}"><svg class="icon"><use href="#i-edit"></use></svg>Editar</button><button class="btn danger" data-action="delete-producao" data-index="${index}"><svg class="icon"><use href="#i-trash"></use></svg>Excluir</button></td></tr>`).join('')}</tbody></table></div>` : empty('Nenhuma produção de colhedora cadastrada.')}
+        </section>
+      </div>`;
+    }
+    function renderPlano() {
+      const meses = state.planoSafra?.meses || [];
+      const cotas = state.planoSafra?.cotas || [];
+      const editQuota = ui.edit.cota != null ? cotas[ui.edit.cota] : {};
+      return `<div class="stack">
+        <section class="panel">
+          <div class="panel-title"><h2>Plano mensal da safra</h2><small>Total ${intbr(meses.reduce((s, r) => s + num(r.valor), 0))}</small></div>
+          <div class="table-wrap"><table><thead><tr>${meses.map(row => `<th>${esc(row.mes)}</th>`).join('')}<th class="number">Total</th></tr></thead><tbody><tr>${meses.map((row, index) => `<td><input type="number" step="0.01" value="${esc(row.valor ?? '')}" data-month-index="${index}"></td>`).join('')}<td class="number"><strong>${intbr(meses.reduce((s, r) => s + num(r.valor), 0))}</strong></td></tr></tbody></table></div>
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Cadastro de cotas por frente</h2><small>Total ${intbr(cotas.reduce((s, r) => s + num(r.cota), 0))} t</small></div>
+          <form id="quota-form" class="stack">
+            <div class="grid form">
+              <div class="field"><label>Frente</label><input name="frente" value="${esc(editQuota?.frente || '')}" required></div>
+              <div class="field"><label>Descrição</label><input name="descricao" value="${esc(editQuota?.descricao || '')}"></div>
+              <div class="field"><label>Cota (t)</label><input name="cota" type="number" step="0.01" value="${esc(editQuota?.cota || '')}"></div>
+            </div>
+            <div class="form-actions"><button class="btn primary"><svg class="icon"><use href="#i-plus"></use></svg>${ui.edit.cota != null ? 'Atualizar' : 'Cadastrar'}</button>${ui.edit.cota != null ? '<button class="btn muted" type="button" data-action="cancel-edit">Cancelar edição</button>' : ''}</div>
+          </form>
+          ${cotas.length ? `<div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Frente</th><th>Descrição</th><th class="number">Cota</th><th></th></tr></thead><tbody>${cotas.map((row, index) => `<tr><td>${esc(row.frente)}</td><td>${esc(row.descricao)}</td><td class="number">${br(row.cota, 0)}</td><td class="row-actions"><button class="btn muted" data-action="edit-cota" data-index="${index}"><svg class="icon"><use href="#i-edit"></use></svg>Editar</button><button class="btn danger" data-action="delete-cota" data-index="${index}"><svg class="icon"><use href="#i-trash"></use></svg>Excluir</button></td></tr>`).join('')}</tbody></table></div>` : empty('Nenhuma cota cadastrada.')}
+        </section>
+      </div>`;
+    }
+    const qualityFields = ['Código','Descrição','TC','%','Cargas','% Anl. Ton','TC/Carga','Dist.Méd.','Brix','Pol','Pureza','PC','Umidade','Fibra','AR % Cana','ATR','TMP','IMP Min','IMP Veg'];
+    function renderQualidade() {
+      const rows = qualityRows();
+      const editRow = ui.edit.qualidade != null ? (state.qualidade[ui.qualityMode] || [])[ui.edit.qualidade] : {};
+      const headers = ['Código','Descrição','TC','%','Cargas','TC/Carga','Dist.Méd.','Brix','Pol','Pureza','PC','Fibra','ATR','IMP Min'];
+      return `<div class="stack">
+        <section class="panel">
+          <div class="panel-title"><h2>Cadastro de produção e qualidade</h2><small>${ui.qualityMode === 'diario' ? 'Diário' : 'Parcial'}</small></div>
+          <div class="toolbar">
+            <div class="field"><label>Base</label><select id="quality-mode"><option value="diario" ${ui.qualityMode === 'diario' ? 'selected' : ''}>Diário</option><option value="parcial" ${ui.qualityMode === 'parcial' ? 'selected' : ''}>Parcial</option></select></div>
+            <div class="field" style="min-width:260px"><label>Buscar</label><input id="quality-search" value="${esc(ui.qualitySearch)}" placeholder="Frente, código ou descrição"></div>
+          </div>
+          <form id="quality-form" class="stack">
+            <div class="grid form">
+              ${qualityFields.map(field => `<div class="field"><label>${esc(field)}</label><input name="${esc(field)}" ${field === 'Descrição' ? '' : 'type="number" step="0.0001"'} value="${esc(editRow?.[field] ?? '')}" ${field === 'Descrição' || field === 'Código' ? 'required' : ''}></div>`).join('')}
+            </div>
+            <div class="form-actions"><button class="btn primary"><svg class="icon"><use href="#i-plus"></use></svg>${ui.edit.qualidade != null ? 'Atualizar' : 'Cadastrar'}</button>${ui.edit.qualidade != null ? '<button class="btn muted" type="button" data-action="cancel-edit">Cancelar edição</button>' : ''}</div>
+          </form>
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Registros cadastrados</h2><small>${rows.length}</small></div>
+          ${rows.length ? `<div class="table-wrap"><table><thead><tr>${headers.map(h => `<th class="${h !== 'Descrição' ? 'number' : ''}">${esc(h)}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map(({ row, index }) => `<tr>${headers.map(h => `<td class="${h !== 'Descrição' ? 'number' : ''}">${h !== 'Descrição' ? br(row[h], h === 'Código' || h === 'Cargas' ? 0 : 2) : esc(row[h])}</td>`).join('')}<td class="row-actions"><button class="btn muted" data-action="edit-quality" data-index="${index}"><svg class="icon"><use href="#i-edit"></use></svg>Editar</button><button class="btn danger" data-action="delete-quality" data-index="${index}"><svg class="icon"><use href="#i-trash"></use></svg>Excluir</button></td></tr>`).join('')}</tbody></table></div>` : empty('Nenhum registro de produção/qualidade cadastrado.')}
+        </section>
+      </div>`;
+    }
+    function qualityRows() {
+      const rows = state.qualidade?.[ui.qualityMode] || [];
+      const term = ui.qualitySearch.toLowerCase();
+      return rows.map((row, index) => ({ row, index })).filter(({ row }) => !term || Object.values(row).join(' ').toLowerCase().includes(term));
+    }
+    function renderEquipamentos() {
+      const term = ui.equipmentSearch.toLowerCase();
+      const fronts = (state.equipamentos || []).map((front, index) => ({ front, index })).filter(({ front }) => !term || JSON.stringify(front).toLowerCase().includes(term));
+      const editFront = ui.edit.equipamento != null ? state.equipamentos[ui.edit.equipamento] : {};
+      return `<div class="stack">
+        <section class="panel">
+          <div class="panel-title"><h2>Cadastro de frentes e equipamentos</h2><small>${state.equipamentos.length} frentes</small></div>
+          <form id="equipment-form" class="stack">
+            <div class="grid form">
+              <div class="field"><label>Frente</label><input name="frente" value="${esc(editFront?.frente || '')}" required></div>
+              <div class="field"><label>Estrutura</label><input name="estrutura" value="${esc(editFront?.estrutura || '')}"></div>
+              <div class="field"><label>Manutenção</label><input name="manutencao" value="${esc(editFront?.manutencao || '')}"></div>
+              <div class="field"><label>Cidade</label><input name="cidade" value="${esc(editFront?.cidade || '')}"></div>
+              <div class="field"><label>BP colhedora</label><input name="bpColhedora" type="number" step="0.01" value="${esc(editFront?.bpColhedora || '')}"></div>
+              <div class="field"><label>BP trator</label><input name="bpTrator" type="number" step="0.01" value="${esc(editFront?.bpTrator || '')}"></div>
+              <div class="field"><label>Colhedoras</label><textarea name="colhedoras">${esc(formatList(editFront?.colhedoras))}</textarea></div>
+              <div class="field"><label>Transbordos</label><textarea name="transbordos">${esc(formatList(editFront?.transbordos))}</textarea></div>
+              <div class="field"><label>Apoio</label><textarea name="apoio">${esc(formatSupport(editFront?.apoio))}</textarea></div>
+              <div class="field"><label>Observações</label><textarea name="observacoes">${esc(editFront?.observacoes || '')}</textarea></div>
+            </div>
+            <div class="form-actions"><button class="btn primary"><svg class="icon"><use href="#i-plus"></use></svg>${ui.edit.equipamento != null ? 'Atualizar' : 'Cadastrar'}</button>${ui.edit.equipamento != null ? '<button class="btn muted" type="button" data-action="cancel-edit">Cancelar edição</button>' : ''}</div>
+          </form>
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Equipamentos cadastrados</h2><small>${fronts.length} de ${state.equipamentos.length}</small></div>
+          <div class="toolbar"><div class="field" style="min-width:280px"><label>Buscar</label><input id="equipment-search" value="${esc(ui.equipmentSearch)}" placeholder="Frente, cidade, frota ou estrutura"></div></div>
+          ${fronts.length ? `<div class="front-grid">${fronts.map(({ front, index }) => `<article class="card front-card">
+            <div class="panel-title"><h3>${esc(front.frente)}</h3><div class="row-actions"><button class="btn muted" data-action="edit-equipment" data-index="${index}"><svg class="icon"><use href="#i-edit"></use></svg>Editar</button><button class="btn danger" data-action="delete-equipment" data-index="${index}"><svg class="icon"><use href="#i-trash"></use></svg>Excluir</button></div></div>
+            <div class="front-meta"><span class="badge blue">${esc(front.estrutura || '-')}</span><span class="badge">${esc(front.cidade || 'Sem cidade')}</span><span class="badge">Manut. ${esc(front.manutencao || '-')}</span></div>
+            <div class="grid three"><div><div class="kpi-label">BP colhedora</div><strong>${esc(front.bpColhedora || '-')}</strong></div><div><div class="kpi-label">BP trator</div><strong>${esc(front.bpTrator || '-')}</strong></div><div><div class="kpi-label">Itens</div><strong>${(front.colhedoras || []).length}/${(front.transbordos || []).length}</strong></div></div>
+            <div class="chips">${(front.colhedoras || []).map(item => `<span class="chip">C ${esc(item)}</span>`).join('') || '<span class="chip">Sem colhedora</span>'}</div>
+            <div class="chips">${(front.transbordos || []).map(item => `<span class="chip">T ${esc(item)}</span>`).join('') || '<span class="chip">Sem transbordo</span>'}</div>
+            ${(front.apoio || []).length ? `<div class="chips">${front.apoio.map(item => `<span class="chip">${esc(item.tipo)} ${esc(item.equipamento)}</span>`).join('')}</div>` : ''}
+          </article>`).join('')}</div>` : empty('Nenhuma frente/equipamento cadastrado.')}
+        </section>
+      </div>`;
+    }
+    function renderParadas() {
+      const rows = filteredStops();
+      const editStop = ui.edit.parada != null ? state.paradas.rows[ui.edit.parada] : {};
+      const totalMin = rows.reduce((s, r) => s + num(r.minutos), 0);
+      const classes = [...new Set((state.paradas?.rows || []).map(r => r.classe).filter(Boolean))];
+      return `<div class="stack">
+        <section class="grid kpi">
+          ${kpi('Registros', intbr(rows.length), 'Após filtros')}
+          ${kpi('Tempo parado', hoursFromMinutes(totalMin), 'Horas:minutos')}
+          ${kpi('Colhedoras', intbr(rows.filter(r => r.classe === 'COLHEDORA').length), 'Eventos')}
+          ${kpi('Transbordos', intbr(rows.filter(r => r.classe === 'TRANSBORDO').length), 'Eventos')}
+          ${kpi('Maior parada', hoursFromMinutes(Math.max(...rows.map(r => num(r.minutos)), 0)), 'Registro individual')}
+          ${kpi('Frentes', intbr(new Set(rows.map(r => r.frente)).size), 'Com ocorrência')}
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Cadastro de paradas</h2><small>${state.paradas.rows.length} registros</small></div>
+          <form id="stop-form" class="stack">
+            <div class="grid form">
+              <div class="field"><label>Classe</label><select name="classe"><option ${editStop?.classe !== 'TRANSBORDO' ? 'selected' : ''}>COLHEDORA</option><option ${editStop?.classe === 'TRANSBORDO' ? 'selected' : ''}>TRANSBORDO</option><option ${editStop?.classe === 'CAMINHÃO' ? 'selected' : ''}>CAMINHÃO</option><option ${editStop?.classe === 'OUTRO' ? 'selected' : ''}>OUTRO</option></select></div>
+              <div class="field"><label>Número</label><input name="numero" value="${esc(editStop?.numero || '')}" required></div>
+              <div class="field"><label>Descrição</label><input name="descricao" value="${esc(editStop?.descricao || '')}"></div>
+              <div class="field"><label>Início</label><input name="inicio" value="${esc(editStop?.inicio || '')}"></div>
+              <div class="field"><label>Parado</label><input name="parado" placeholder="HH:MM" value="${esc(editStop?.parado || '')}"></div>
+              <div class="field"><label>Frente</label><input name="frente" value="${esc(editStop?.frente || '')}"></div>
+              <div class="field"><label>Tipo</label><input name="tipo" value="${esc(editStop?.tipo || '')}"></div>
+              <div class="field"><label>Local</label><input name="local" value="${esc(editStop?.local || '')}"></div>
+              <div class="field"><label>Observação</label><textarea name="observacao">${esc(editStop?.observacao || '')}</textarea></div>
+            </div>
+            <div class="form-actions"><button class="btn primary"><svg class="icon"><use href="#i-plus"></use></svg>${ui.edit.parada != null ? 'Atualizar' : 'Cadastrar'}</button>${ui.edit.parada != null ? '<button class="btn muted" type="button" data-action="cancel-edit">Cancelar edição</button>' : ''}</div>
+          </form>
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Paradas cadastradas</h2><small>${rows.length}</small></div>
+          <div class="toolbar"><div class="field"><label>Classe</label><select id="stop-class"><option value="">Todas</option>${classes.map(c => `<option value="${esc(c)}" ${ui.stopClass === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div><div class="field" style="min-width:280px"><label>Buscar</label><input id="stop-search" value="${esc(ui.stopSearch)}" placeholder="Frota, frente, tipo ou local"></div></div>
+          ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Classe</th><th>Número</th><th>Descrição</th><th>Início</th><th class="number">Parado</th><th>Frente</th><th>Tipo</th><th>Local</th><th>Observação</th><th></th></tr></thead><tbody>${rows.map(row => `<tr><td><span class="badge ${row.classe === 'COLHEDORA' ? 'blue' : 'green'}">${esc(row.classe)}</span></td><td>${esc(row.numero)}</td><td>${esc(row.descricao)}</td><td>${esc(row.inicio)}</td><td class="number">${esc(row.parado)}</td><td>${esc(row.frente)}</td><td>${esc(row.tipo)}</td><td>${esc(row.local)}</td><td>${esc(row.observacao)}</td><td class="row-actions"><button class="btn muted" data-action="edit-stop" data-index="${row.__index}"><svg class="icon"><use href="#i-edit"></use></svg>Editar</button><button class="btn danger" data-action="delete-stop" data-index="${row.__index}"><svg class="icon"><use href="#i-trash"></use></svg>Excluir</button></td></tr>`).join('')}</tbody></table></div>` : empty('Nenhuma parada cadastrada.')}
+        </section>
+      </div>`;
+    }
+    function filteredStops() {
+      const term = ui.stopSearch.toLowerCase();
+      return (state.paradas?.rows || []).map((row, index) => ({ ...row, __index: index })).filter(row => {
+        const classOk = !ui.stopClass || row.classe === ui.stopClass;
+        const termOk = !term || Object.values(row).join(' ').toLowerCase().includes(term);
+        return classOk && termOk;
+      });
+    }
+    function renderChecklist() {
+      const done = Object.values(state.checkStatus || {}).filter(Boolean).length;
+      return `<div class="stack">
+        <section class="grid kpi">
+          ${kpi('Itens', intbr(state.checklist.length), 'Checklist cadastrado')}
+          ${kpi('Concluídos', intbr(done), `${br((done / Math.max(state.checklist.length, 1)) * 100, 0)}%`)}
+          ${kpi('Pendentes', intbr(state.checklist.length - done), 'Acompanhe no turno')}
+        </section>
+        <section class="panel">
+          <div class="panel-title"><h2>Cadastro de checklist</h2><small>${state.checklist.length} itens</small></div>
+          <form id="check-form" class="toolbar">
+            <div class="field" style="min-width: min(520px, 100%)"><label>Item</label><input name="item" required></div>
+            <button class="btn primary"><svg class="icon"><use href="#i-plus"></use></svg>Cadastrar</button>
+          </form>
+          ${state.checklist.length ? `<div class="checklist">${state.checklist.map((item, index) => `<label class="check-item ${state.checkStatus[index] ? 'done' : ''}"><input type="checkbox" data-check-index="${index}" ${state.checkStatus[index] ? 'checked' : ''}><span>${esc(item)}</span><button type="button" class="btn danger" data-action="delete-check" data-index="${index}"><svg class="icon"><use href="#i-trash"></use></svg></button></label>`).join('')}</div>` : empty('Nenhum item cadastrado.')}
+        </section>
+      </div>`;
+    }
+    function bindCurrentView() {
+      content.querySelectorAll('[data-bind]').forEach(el => {
+        el.addEventListener('change', () => {
+          setPath(el.dataset.bind, inputValue(el));
+          persist();
+          scheduleRender();
+        });
+      });
+      content.querySelectorAll('[data-month-index]').forEach(el => {
+        el.addEventListener('change', () => {
+          state.planoSafra.meses[Number(el.dataset.monthIndex)].valor = inputValue(el);
+          persist();
+          scheduleRender();
+        });
+      });
+      content.querySelectorAll('[data-check-index]').forEach(el => {
+        el.addEventListener('change', () => {
+          state.checkStatus[el.dataset.checkIndex] = el.checked;
+          persist();
+          render();
+        });
+      });
+      const qualityMode = document.getElementById('quality-mode');
+      if (qualityMode) qualityMode.addEventListener('change', () => { ui.qualityMode = qualityMode.value; ui.edit.qualidade = null; render(); });
+      const qualitySearch = document.getElementById('quality-search');
+      if (qualitySearch) qualitySearch.addEventListener('input', () => { ui.qualitySearch = qualitySearch.value; renderKeepingFocus('quality-search'); });
+      const equipmentSearch = document.getElementById('equipment-search');
+      if (equipmentSearch) equipmentSearch.addEventListener('input', () => { ui.equipmentSearch = equipmentSearch.value; renderKeepingFocus('equipment-search'); });
+      const stopClass = document.getElementById('stop-class');
+      if (stopClass) stopClass.addEventListener('change', () => { ui.stopClass = stopClass.value; render(); });
+      const stopSearch = document.getElementById('stop-search');
+      if (stopSearch) stopSearch.addEventListener('input', () => { ui.stopSearch = stopSearch.value; renderKeepingFocus('stop-search'); });
+    }
+    function renderKeepingFocus(id) {
+      const el = document.getElementById(id);
+      const pos = el && typeof el.selectionStart === 'number' ? el.selectionStart : null;
+      render();
+      const next = document.getElementById(id);
+      if (!next) return;
+      next.focus();
+      if (pos !== null && typeof next.setSelectionRange === 'function') {
+        const safePos = Math.min(pos, next.value.length);
+        next.setSelectionRange(safePos, safePos);
+      }
+    }
+    document.addEventListener('submit', event => {
+      event.preventDefault();
+      const form = event.target;
+      if (form.id === 'carreg-form') {
+        const row = { equipamento: formValue(form, 'equipamento'), carregamento: num(formValue(form, 'carregamento'), ''), ciclo: num(formValue(form, 'ciclo'), ''), status: formValue(form, 'status') || 'Rodando' };
+        if (ui.edit.carregamento != null) state.carregamento.rows[ui.edit.carregamento] = row;
+        else state.carregamento.rows.push(row);
+        ui.edit.carregamento = null;
+      }
+      if (form.id === 'producao-form') {
+        const row = { frente: formValue(form, 'frente'), colhedora: formValue(form, 'colhedora'), carregamento: num(formValue(form, 'carregamento'), ''), ciclo: num(formValue(form, 'ciclo'), '') };
+        if (ui.edit.producao != null) state.producaoColhedoras[ui.edit.producao] = row;
+        else state.producaoColhedoras.push(row);
+        ui.edit.producao = null;
+      }
+      if (form.id === 'quota-form') {
+        const row = { frente: formValue(form, 'frente'), descricao: formValue(form, 'descricao'), cota: num(formValue(form, 'cota'), '') };
+        if (ui.edit.cota != null) state.planoSafra.cotas[ui.edit.cota] = row;
+        else state.planoSafra.cotas.push(row);
+        ui.edit.cota = null;
+      }
+      if (form.id === 'quality-form') {
+        const row = {};
+        qualityFields.forEach(field => {
+          const value = formValue(form, field);
+          row[field] = field === 'Descrição' ? value : num(value, '');
+        });
+        if (ui.edit.qualidade != null) state.qualidade[ui.qualityMode][ui.edit.qualidade] = row;
+        else state.qualidade[ui.qualityMode].push(row);
+        ui.edit.qualidade = null;
+      }
+      if (form.id === 'equipment-form') {
+        const row = {
+          frente: formValue(form, 'frente'),
+          estrutura: formValue(form, 'estrutura'),
+          manutencao: formValue(form, 'manutencao'),
+          cidade: formValue(form, 'cidade'),
+          bpColhedora: num(formValue(form, 'bpColhedora'), ''),
+          bpTrator: num(formValue(form, 'bpTrator'), ''),
+          colhedoras: parseList(formValue(form, 'colhedoras')),
+          transbordos: parseList(formValue(form, 'transbordos')),
+          apoio: parseSupport(formValue(form, 'apoio')),
+          observacoes: formValue(form, 'observacoes')
+        };
+        if (ui.edit.equipamento != null) state.equipamentos[ui.edit.equipamento] = row;
+        else state.equipamentos.push(row);
+        ui.edit.equipamento = null;
+      }
+      if (form.id === 'stop-form') {
+        const parado = formValue(form, 'parado');
+        const row = {
+          classe: formValue(form, 'classe'),
+          numero: formValue(form, 'numero'),
+          descricao: formValue(form, 'descricao'),
+          inicio: formValue(form, 'inicio'),
+          parado,
+          minutos: minutesFromHHMM(parado),
+          frente: formValue(form, 'frente'),
+          tipo: formValue(form, 'tipo'),
+          local: formValue(form, 'local'),
+          observacao: formValue(form, 'observacao')
+        };
+        if (ui.edit.parada != null) state.paradas.rows[ui.edit.parada] = row;
+        else state.paradas.rows.push(row);
+        ui.edit.parada = null;
+      }
+      if (form.id === 'check-form') {
+        state.checklist.push(formValue(form, 'item'));
+      }
+      persist(true);
+      render();
+    });
+    document.addEventListener('click', event => {
+      const tab = event.target.closest('[data-tab]');
+      if (tab) {
+        activeTab = tab.dataset.tab;
+        ui.edit = {};
+        render();
+      }
+      const action = event.target.closest('[data-action]');
+      if (!action) return;
+      const index = Number(action.dataset.index);
+      const type = action.dataset.action;
+      if (type === 'cancel-edit') ui.edit = {};
+      if (type === 'edit-carreg') ui.edit = { carregamento: index };
+      if (type === 'delete-carreg') state.carregamento.rows.splice(index, 1);
+      if (type === 'edit-producao') ui.edit = { producao: index };
+      if (type === 'delete-producao') state.producaoColhedoras.splice(index, 1);
+      if (type === 'edit-cota') ui.edit = { cota: index };
+      if (type === 'delete-cota') state.planoSafra.cotas.splice(index, 1);
+      if (type === 'edit-quality') ui.edit = { qualidade: index };
+      if (type === 'delete-quality') state.qualidade[ui.qualityMode].splice(index, 1);
+      if (type === 'edit-equipment') ui.edit = { equipamento: index };
+      if (type === 'delete-equipment') state.equipamentos.splice(index, 1);
+      if (type === 'edit-stop') ui.edit = { parada: index };
+      if (type === 'delete-stop') state.paradas.rows.splice(index, 1);
+      if (type === 'delete-check') {
+        state.checklist.splice(index, 1);
+        const nextStatus = {};
+        state.checklist.forEach((_, i) => { nextStatus[i] = !!state.checkStatus[i >= index ? i + 1 : i]; });
+        state.checkStatus = nextStatus;
+      }
+      if (type.includes('delete')) persist(true);
+      render();
+    });
+    document.getElementById('save-btn').addEventListener('click', () => persist(true));
+    document.getElementById('print-btn').addEventListener('click', () => window.print());
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      if (!confirm('Limpar todos os dados cadastrados neste sistema?')) return;
+      localStorage.removeItem(storageKey);
+      state = blankState();
+      ui.edit = {};
+      render();
+      toast('Sistema limpo.');
+    });
+    document.getElementById('export-btn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ctt-bp-tropical-${plantId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-file').click());
+    document.getElementById('import-file').addEventListener('change', async event => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try {
+        const imported = JSON.parse(await file.text());
+        state = normalizeState({ ...imported, version: 2 });
+        persist(true);
+        render();
+      } catch (e) {
+        alert('Não foi possível importar o arquivo JSON.');
+      } finally {
+        event.target.value = '';
+      }
+    });
+    render();
+  </script>
+</body>
+</html>
