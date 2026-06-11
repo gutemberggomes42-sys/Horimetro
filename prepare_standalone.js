@@ -3,7 +3,7 @@ import path from 'path';
 
 const distDir = path.resolve('dist');
 const htmlFiles = ['index.html', 'potencial.html', 'cota.html', 'entrega-hora.html', 'meta.html', 'tropical.html'];
-const assetFiles = ['audit-logger.js'];
+const assetFiles = ['audit-logger.js', 'backup-manager.js'];
 
 if (fs.existsSync(distDir)) {
     fs.rmSync(distDir, { recursive: true, force: true });
