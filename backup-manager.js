@@ -212,12 +212,45 @@
         return backup;
     }
 
+    function normalizeLocalStorageBackup(localStorageBackup) {
+        if (!localStorageBackup || typeof localStorageBackup !== 'object') return { items: {} };
+        if (localStorageBackup.items && typeof localStorageBackup.items === 'object') return localStorageBackup;
+        return {
+            items: localStorageBackup,
+            count: Object.keys(localStorageBackup).length
+        };
+    }
+
     function normalizeBackup(raw) {
         if (!raw || typeof raw !== 'object') throw new Error('Arquivo de backup invalido.');
-        if (raw.app !== 'horimetro' && !raw.tables && !raw.localStorage) {
+        if (raw.app !== 'horimetro' && !raw.tables && !raw.localStorage && !raw.items && raw.kind !== 'local-snapshot') {
             throw new Error('Este arquivo nao parece ser um backup do Horimetro.');
         }
-        return raw;
+
+        const backup = { ...raw };
+        if (!backup.app) backup.app = 'horimetro';
+        if (!backup.localStorage && backup.items && typeof backup.items === 'object') {
+            backup.localStorage = { items: backup.items, count: Object.keys(backup.items).length };
+        }
+        backup.localStorage = normalizeLocalStorageBackup(backup.localStorage);
+        if (!backup.tables || typeof backup.tables !== 'object') backup.tables = {};
+        return backup;
+    }
+
+    function isRemoteUnavailableError(error) {
+        const status = Number(error && error.status) || 0;
+        const message = String(error && error.message ? error.message : error).toLowerCase();
+        return status === 401
+            || status === 402
+            || status === 403
+            || status === 429
+            || status >= 500
+            || message.includes('failed to fetch')
+            || message.includes('network')
+            || message.includes('payment required')
+            || message.includes('jwt')
+            || message.includes('auth')
+            || message.includes('fetch');
     }
 
     function restoreLocalStorage(backup) {
@@ -228,7 +261,9 @@
         Object.entries(items).forEach(([key, value]) => {
             if (shouldSkipStorageKey(key)) return;
             try {
-                localStorage.setItem(key, String(value));
+                if (typeof value === 'undefined') return;
+                const storageValue = typeof value === 'string' ? value : JSON.stringify(value);
+                localStorage.setItem(key, storageValue === undefined ? '' : storageValue);
                 restored += 1;
             } catch (error) {
                 console.warn(`Nao foi possivel restaurar localStorage ${key}:`, error);
@@ -263,7 +298,10 @@
 
             if (!response.ok) {
                 const text = await response.text().catch(() => '');
-                throw new Error(`${response.status} ${response.statusText}${text ? ` - ${text}` : ''}`);
+                const error = new Error(`${response.status} ${response.statusText}${text ? ` - ${text}` : ''}`);
+                error.status = response.status;
+                error.table = table.name;
+                throw error;
             }
 
             imported += chunk.length;
@@ -275,9 +313,13 @@
     async function importBackupObject(rawBackup, options = {}) {
         const backup = normalizeBackup(rawBackup);
         const result = {
+            accepted: true,
             localStorageRestored: 0,
             tablesImported: {},
-            errors: []
+            errors: [],
+            remoteAttempted: false,
+            remoteSkipped: false,
+            remoteSkippedReason: ''
         };
 
         storeBackup(backup);
@@ -292,11 +334,17 @@
                 }
 
                 try {
+                    result.remoteAttempted = true;
                     result.tablesImported[table.name] = await upsertTableRows(table, tableBackup.rows);
                 } catch (error) {
                     const message = String(error && error.message ? error.message : error);
                     result.tablesImported[table.name] = { imported: 0, error: message };
                     result.errors.push({ table: table.name, error: message });
+                    if (isRemoteUnavailableError(error)) {
+                        result.remoteSkipped = true;
+                        result.remoteSkippedReason = message;
+                        break;
+                    }
                 }
             }
         }
@@ -308,7 +356,8 @@
 
     async function importBackupFile(file, options = {}) {
         if (!file) throw new Error('Nenhum arquivo selecionado.');
-        const text = await file.text();
+        const text = (await file.text()).replace(/^\uFEFF/, '').trim();
+        if (!text) throw new Error('Arquivo de backup vazio.');
         const backup = safeJsonParse(text, null);
         if (!backup) throw new Error('Arquivo JSON invalido.');
         return importBackupObject(backup, options);

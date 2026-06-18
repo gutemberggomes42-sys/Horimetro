@@ -2422,6 +2422,9 @@
                     pollTimer: null,
                     updatedAt: null,
                     isApplyingRemote: false,
+                    unavailableUntil: 0,
+                    lastErrorMessage: '',
+                    lastErrorToastAt: 0,
                     syncIntervalMs: 10000
                 };
                 
@@ -2962,6 +2965,58 @@
                 return Number.isFinite(parsed) ? parsed : 0;
             }
 
+            translateRemoteError(error) {
+                const status = error?.status || error?.statusCode || '';
+                const message = String(error?.message || error?.error_description || error || '').trim();
+                const lower = message.toLowerCase();
+
+                if (status === 402 || status === '402' || lower.includes('payment required') || lower.includes('402')) {
+                    return 'Supabase bloqueado por cobrança, limite ou projeto pausado.';
+                }
+                if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('load failed')) {
+                    return 'Sem comunicação com o banco de dados.';
+                }
+                if (lower.includes('relation') && lower.includes('does not exist')) {
+                    return 'Tabela entrega_hora_data não encontrada no banco.';
+                }
+                if (lower.includes('violates row-level security')) {
+                    return 'Permissão negada pela política do banco.';
+                }
+                return message || 'Erro desconhecido ao sincronizar com o banco.';
+            }
+
+            canAttemptRemote() {
+                if (!this.supabaseClient) return false;
+                return Date.now() >= (this.remoteState.unavailableUntil || 0);
+            }
+
+            markRemoteFailure(error, options = {}) {
+                const message = this.translateRemoteError(error);
+                this.remoteState.lastErrorMessage = message;
+                this.remoteState.unavailableUntil = Date.now() + (options.cooldownMs || 60000);
+                this.writeSyncState({ pendingRemoteSync: true });
+
+                const now = Date.now();
+                const canNotify = options.notify !== false && now - (this.remoteState.lastErrorToastAt || 0) > 60000;
+                if (canNotify) {
+                    this.remoteState.lastErrorToastAt = now;
+                    this.showToast(`Dados salvos localmente. Banco indisponível: ${message}`, 'warning');
+                }
+
+                console.warn('⚠️ Entrega Hora trabalhando em modo local:', message, error);
+                return message;
+            }
+
+            clearRemoteFailure(timestamp) {
+                this.remoteState.unavailableUntil = 0;
+                this.remoteState.lastErrorMessage = '';
+                this.remoteState.updatedAt = timestamp;
+                this.writeSyncState({
+                    pendingRemoteSync: false,
+                    lastRemoteUpdatedAt: timestamp
+                });
+            }
+
             loadGeneralDataFromStorage() {
                 const data = this.readStoredJson(this.getGeneralStorageKey(), this.getLegacyGeneralStorageKey());
                 if (!data) return false;
@@ -3124,7 +3179,7 @@
             }
 
             scheduleRemoteSave() {
-                if (!this.supabaseClient) return;
+                if (!this.canAttemptRemote()) return;
                 if (this.remoteState.saveTimer) clearTimeout(this.remoteState.saveTimer);
                 this.remoteState.saveTimer = setTimeout(() => {
                     this.pushRemoteSnapshot();
@@ -3133,6 +3188,7 @@
 
             async pushRemoteSnapshot(options = {}) {
                 if (!this.supabaseClient) return false;
+                if (!this.canAttemptRemote()) return false;
 
                 const timestamp = new Date().toISOString();
                 const snapshot = this.buildSharedSnapshot(timestamp);
@@ -3154,7 +3210,14 @@
                             },
                             body: JSON.stringify(payload),
                             keepalive: true
-                        });
+                        }).then(async response => {
+                            if (!response.ok) {
+                                const text = await response.text().catch(() => '');
+                                throw new Error(`${response.status} ${response.statusText}${text ? ` - ${text}` : ''}`);
+                            }
+                            this.clearRemoteFailure(timestamp);
+                        }).catch(error => this.markRemoteFailure(error, { notify: false }));
+                        return true;
                     } else {
                         const { error } = await this.supabaseClient
                             .from(this.remoteTable)
@@ -3163,20 +3226,17 @@
                         if (error) throw error;
                     }
 
-                    this.remoteState.updatedAt = timestamp;
-                    this.writeSyncState({
-                        pendingRemoteSync: false,
-                        lastRemoteUpdatedAt: timestamp
-                    });
+                    this.clearRemoteFailure(timestamp);
                     return true;
                 } catch (error) {
-                    console.error('❌ Erro ao salvar no banco:', error);
+                    this.markRemoteFailure(error, { notify: options.notify !== false });
                     return false;
                 }
             }
 
             async loadRemoteSnapshot(options = {}) {
                 if (!this.supabaseClient) return false;
+                if (!this.canAttemptRemote()) return false;
 
                 try {
                     const { data, error } = await this.supabaseClient
@@ -3185,7 +3245,8 @@
                         .eq('plant_id', this.plantId)
                         .maybeSingle();
 
-                    if (error || !data || !data.data) return false;
+                    if (error) throw error;
+                    if (!data || !data.data) return false;
 
                     const remoteUpdatedAt = data.updated_at || data.data.timestamp || null;
                     const remoteTimestamp = this.toTimestamp(remoteUpdatedAt);
@@ -3219,7 +3280,7 @@
 
                     return true;
                 } catch (error) {
-                    console.error('❌ Erro ao carregar do banco:', error);
+                    this.markRemoteFailure(error, { notify: false });
                     return false;
                 } finally {
                     this.remoteState.isApplyingRemote = false;
@@ -3230,7 +3291,10 @@
                 try {
                     if (this.supabaseClient && !this.allowLegacyStorageFallback) {
                         const loadedRemote = await this.loadRemoteSnapshot({ refreshUI: false, forceApply: true });
-                        if (!loadedRemote) this.resetPlantDataToEmpty();
+                        if (!loadedRemote) {
+                            this.loadGeneralDataFromStorage();
+                            this.loadDateSpecificData();
+                        }
                         return;
                     }
 
@@ -3338,8 +3402,10 @@
                     if (options.skipRemote !== true && this.supabaseClient) {
                         if (options.useKeepalive === true) {
                             this.pushRemoteSnapshot({ useKeepalive: true });
-                        } else {
+                        } else if (this.canAttemptRemote()) {
                             this.scheduleRemoteSave();
+                        } else if (options.showToast !== false) {
+                            this.showToast('Salvo localmente. A sincronização com o banco está pendente.', 'warning');
                         }
                     }
                 } catch (error) {
