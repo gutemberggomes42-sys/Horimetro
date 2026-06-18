@@ -2965,6 +2965,10 @@
                 return Number.isFinite(parsed) ? parsed : 0;
             }
 
+            hasRemoteTransport() {
+                return !!this.supabaseClient || typeof fetch === 'function';
+            }
+
             translateRemoteError(error) {
                 const status = error?.status || error?.statusCode || '';
                 const message = String(error?.message || error?.error_description || error || '').trim();
@@ -2985,8 +2989,9 @@
                 return message || 'Erro desconhecido ao sincronizar com o banco.';
             }
 
-            canAttemptRemote() {
-                if (!this.supabaseClient) return false;
+            canAttemptRemote(options = {}) {
+                if (!this.hasRemoteTransport()) return false;
+                if (options.force === true) return true;
                 return Date.now() >= (this.remoteState.unavailableUntil || 0);
             }
 
@@ -3186,9 +3191,30 @@
                 }, 800);
             }
 
+            async postRemoteSnapshot(payload, options = {}) {
+                const response = await fetch(`${this.supabaseUrl}/rest/v1/${this.remoteTable}?on_conflict=plant_id`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': this.supabaseKey,
+                        'Authorization': `Bearer ${this.supabaseKey}`,
+                        'Prefer': 'resolution=merge-duplicates,return=minimal'
+                    },
+                    body: JSON.stringify([payload]),
+                    keepalive: options.useKeepalive === true
+                });
+
+                if (!response.ok) {
+                    const text = await response.text().catch(() => '');
+                    const error = new Error(`${response.status} ${response.statusText}${text ? ` - ${text}` : ''}`);
+                    error.status = response.status;
+                    throw error;
+                }
+            }
+
             async pushRemoteSnapshot(options = {}) {
-                if (!this.supabaseClient) return false;
-                if (!this.canAttemptRemote()) return false;
+                if (!this.hasRemoteTransport()) return false;
+                if (!this.canAttemptRemote({ force: options.force === true })) return false;
 
                 const timestamp = new Date().toISOString();
                 const snapshot = this.buildSharedSnapshot(timestamp);
@@ -3199,25 +3225,15 @@
                 };
 
                 try {
-                    if (options.useKeepalive === true && typeof fetch === 'function') {
-                        fetch(`${this.supabaseUrl}/rest/v1/${this.remoteTable}?on_conflict=plant_id`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'apikey': this.supabaseKey,
-                                'Authorization': `Bearer ${this.supabaseKey}`,
-                                'Prefer': 'resolution=merge-duplicates,return=minimal'
-                            },
-                            body: JSON.stringify(payload),
-                            keepalive: true
-                        }).then(async response => {
-                            if (!response.ok) {
-                                const text = await response.text().catch(() => '');
-                                throw new Error(`${response.status} ${response.statusText}${text ? ` - ${text}` : ''}`);
-                            }
-                            this.clearRemoteFailure(timestamp);
-                        }).catch(error => this.markRemoteFailure(error, { notify: false }));
-                        return true;
+                    if (typeof fetch === 'function') {
+                        if (options.useKeepalive === true) {
+                            this.postRemoteSnapshot(payload, { useKeepalive: true }).then(() => {
+                                this.clearRemoteFailure(timestamp);
+                            }).catch(error => this.markRemoteFailure(error, { notify: false }));
+                            return true;
+                        }
+
+                        await this.postRemoteSnapshot(payload);
                     } else {
                         const { error } = await this.supabaseClient
                             .from(this.remoteTable)
@@ -3227,6 +3243,9 @@
                     }
 
                     this.clearRemoteFailure(timestamp);
+                    if (options.notifySuccess === true) {
+                        this.showToast('Sincronizado com o banco de dados.', 'success');
+                    }
                     return true;
                 } catch (error) {
                     this.markRemoteFailure(error, { notify: options.notify !== false });
@@ -3234,9 +3253,23 @@
                 }
             }
 
+            async pushPendingRemoteSnapshot(options = {}) {
+                const synced = await this.pushRemoteSnapshot({
+                    force: true,
+                    notify: options.notify !== false,
+                    notifySuccess: options.notifySuccess === true
+                });
+
+                if (!synced && options.showPendingToast === true) {
+                    this.showToast('Salvo localmente. A sincronização com o banco está pendente.', 'warning');
+                }
+
+                return synced;
+            }
+
             async loadRemoteSnapshot(options = {}) {
                 if (!this.supabaseClient) return false;
-                if (!this.canAttemptRemote()) return false;
+                if (!this.canAttemptRemote({ force: options.force === true })) return false;
 
                 try {
                     const { data, error } = await this.supabaseClient
@@ -3286,6 +3319,7 @@
                     this.remoteState.isApplyingRemote = false;
                 }
             }
+
 
             async loadData() {
                 try {
@@ -3379,7 +3413,7 @@
                     
                     this.state.ui.unsavedChanges = false;
                     this.writeSyncState({
-                        pendingRemoteSync: options.skipRemote !== true && !!this.supabaseClient,
+                        pendingRemoteSync: options.skipRemote !== true && this.hasRemoteTransport(),
                         lastLocalUpdatedAt: timestamp,
                         lastRemoteUpdatedAt: this.remoteState.updatedAt || this.readSyncState().lastRemoteUpdatedAt
                     });
@@ -3399,9 +3433,15 @@
                         }, 2000);
                     }
 
-                    if (options.skipRemote !== true && this.supabaseClient) {
+                    if (options.skipRemote !== true && this.hasRemoteTransport()) {
                         if (options.useKeepalive === true) {
-                            this.pushRemoteSnapshot({ useKeepalive: true });
+                            this.pushRemoteSnapshot({ useKeepalive: true, force: true });
+                        } else if (options.forceRemote === true || options.showToast !== false) {
+                            this.pushPendingRemoteSnapshot({
+                                notify: options.showToast !== false,
+                                notifySuccess: options.showToast !== false,
+                                showPendingToast: options.showToast !== false
+                            });
                         } else if (this.canAttemptRemote()) {
                             this.scheduleRemoteSave();
                         } else if (options.showToast !== false) {
@@ -7016,7 +7056,7 @@
                     this.updateRolling3hPanel();
                 }, 60000);
 
-                if (this.supabaseClient) {
+                if (this.hasRemoteTransport()) {
                     if (this.remoteState.pollTimer) {
                         clearInterval(this.remoteState.pollTimer);
                     }
@@ -7025,7 +7065,7 @@
                         const syncState = this.readSyncState();
 
                         if (syncState.pendingRemoteSync) {
-                            this.pushRemoteSnapshot();
+                            this.pushRemoteSnapshot({ force: true, notify: false });
                             return;
                         }
 

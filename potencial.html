@@ -4556,15 +4556,19 @@
                                     };
 
                                     if (localSnapshot) {
-                                        remoteSnapshot.ui = {
-                                            ...(remoteSnapshot.ui || {}),
-                                            ...(localSnapshot.ui || {})
-                                        };
-                                        remoteSnapshot.currentDate = localSnapshot.currentDate || remoteSnapshot.currentDate;
-                                        remoteSnapshot.dateEntries = {
-                                            ...(remoteSnapshot.dateEntries || {}),
-                                            ...(localSnapshot.dateEntries || {})
-                                        };
+                                        const remoteTimestamp = this.getDataTimestamp(remoteSnapshot, data.updated_at);
+                                        const localTimestamp = this.getDataTimestamp(localSnapshot, localSnapshot.timestamp);
+                                        if (localTimestamp > remoteTimestamp) {
+                                            remoteSnapshot.ui = {
+                                                ...(remoteSnapshot.ui || {}),
+                                                ...(localSnapshot.ui || {})
+                                            };
+                                            remoteSnapshot.currentDate = localSnapshot.currentDate || remoteSnapshot.currentDate;
+                                            remoteSnapshot.dateEntries = {
+                                                ...(remoteSnapshot.dateEntries || {}),
+                                                ...(localSnapshot.dateEntries || {})
+                                            };
+                                        }
                                     }
 
                                     return {
